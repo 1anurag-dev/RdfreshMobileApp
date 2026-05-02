@@ -1,0 +1,22 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Create RD Fresh source zip",
+			"type": "shell",
+			"command": "cd \"/Users/anurag-zstch1446/Desktop/Mike-Sources\" && rm -f \"rdfresh-1-UsamaHafeezDev-2-source.zip\" && /usr/bin/zip -r \"rdfresh-1-UsamaHafeezDev-2-source.zip\" \"rdfresh-1-UsamaHafeezDev-2\" -x \"*/.git/*\" \"*/.dart_tool/*\" \"*/build/*\" \"*/ios/Pods/*\" \"*/macos/Pods/*\" \"*/android/.gradle/*\" \"*/.backup_old_ui/*\"",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Create requested source zip",
+			"type": "shell",
+			"command": "cd \"/Users/anurag-zstch1446/Desktop/Mike-Sources\" && rm -f \"rdfresh-1-UsamaHafeezDev-2-source.zip\" && /usr/bin/zip -r \"rdfresh-1-UsamaHafeezDev-2-source.zip\" \"rdfresh-1-UsamaHafeezDev-2\" -x \"*/.git/*\" \"*/.dart_tool/*\" \"*/build/*\" \"*/ios/Pods/*\" \"*/macos/Pods/*\" \"*/android/.gradle/*\" \"*/.backup_old_ui/*\"",
+			"args": [],
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

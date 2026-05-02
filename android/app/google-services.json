@@ -1,0 +1,82 @@
+{
+  "project_info": {
+    "project_number": "472132576707",
+    "project_id": "rd-fresh",
+    "storage_bucket": "rd-fresh.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:472132576707:android:392e4d07f523ad190d4976",
+        "android_client_info": {
+          "package_name": "com.codesteem.veggifresh"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "472132576707-b5m35h4nnbtht44lploj3re0o8494uq2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzpsIHsk1M8IbEeFrosJDjuRpWgurEGiE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "472132576707-b5m35h4nnbtht44lploj3re0o8494uq2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "472132576707-rrp3qr05qrfjbck1o4nc8h3ephtv7b9h.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.rdfresh"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:472132576707:android:234b172a374db8c10d4976",
+        "android_client_info": {
+          "package_name": "com.example.rdfresh"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "472132576707-b5m35h4nnbtht44lploj3re0o8494uq2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzpsIHsk1M8IbEeFrosJDjuRpWgurEGiE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "472132576707-b5m35h4nnbtht44lploj3re0o8494uq2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "472132576707-rrp3qr05qrfjbck1o4nc8h3ephtv7b9h.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.rdfresh"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
