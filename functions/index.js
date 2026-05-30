@@ -4,6 +4,7 @@ const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const {onCall, onRequest, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 
 admin.initializeApp();
 
@@ -327,6 +328,18 @@ exports.createOrder = onCall({ invoker: "public" }, async (request) => {
   const uid = request.auth.uid;
   const {items, billingInfo} = request.data;
 
+  // 1b. Credit-approval gate — only credit-approved customers (or admins) may order.
+  //     Blocks unapproved sign-ups from placing orders they haven't been cleared to pay for.
+  const orderingUserSnap = await db.collection("users").doc(uid).get();
+  const orderingUser = orderingUserSnap.exists ? orderingUserSnap.data() : null;
+  if (orderingUser?.creditApproved !== true && orderingUser?.role !== "admin") {
+    throw new HttpsError(
+      "permission-denied",
+      "Your account is pending credit approval. RD Fresh will review your account, " +
+      "and you'll be able to place orders once it's approved.",
+    );
+  }
+
   // 2. Validate input
   if (!items || !Array.isArray(items) || items.length === 0) {
     throw new HttpsError("invalid-argument", "Order must contain at least one item");
@@ -616,19 +629,13 @@ exports.dailyBagChangeReminder = onSchedule({
         ])];
 
         if (uniqueEmails.length > 0) {
-          const transporter = nodemailer.createTransport({
-            service: "gmail",
-            auth: {
-              user: process.env.MAIL_USER || "devanurag96@gmail.com",
-              pass: process.env.MAIL_PASS,
-            },
-          });
+          const {transporter, from: mailFrom} = await getMailTransporter();
 
           const customerName = userData.name || userData.email || "Unknown Customer";
           const businessName = userData.businessName || userData.company || customerName;
 
           await transporter.sendMail({
-            from: "\"RD Fresh\" <devanurag96@gmail.com>",
+            from: mailFrom,
             to: uniqueEmails.join(", "),
             subject: `RD Fresh Alert: ${businessName} — Bags Not Changed (${daysSinceDelivery} Days Overdue)`,
             html: `
@@ -712,4 +719,187 @@ exports.migrateUsersToFirebaseAuth = onCall({invoker: "public"}, async (request)
   }
 
   return {migrated: results.length, results};
+});
+
+// ─── Email helper (shared) ───────────────────────────────────────────────────
+
+async function getMailTransporter() {
+  const config = await getConfig();
+  const user = config.MAIL_USER;
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {user, pass: config.MAIL_PASS},
+  });
+  return {transporter, from: `"RD Fresh" <${user}>`};
+}
+
+// ─── Customer Credit Approval ────────────────────────────────────────────────
+
+async function approvalToken(uid) {
+  const config = await getConfig();
+  const secret = config.JWT_SECRET || "rdfresh-approval-fallback";
+  return crypto.createHmac("sha256", secret).update("approve:" + uid).digest("hex");
+}
+
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a), "utf8");
+  const bb = Buffer.from(String(b), "utf8");
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
+function escapeHtml(s) {
+  return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+}
+
+function htmlPage(title, bodyHtml) {
+  return "<!doctype html><html><head>" +
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
+    `<title>${escapeHtml(title)}</title></head>` +
+    "<body style=\"font-family:-apple-system,Arial,sans-serif;background:#f4f6f4;margin:0;padding:24px;\">" +
+    "<div style=\"max-width:480px;margin:0 auto;background:#fff;border-radius:12px;" +
+    "overflow:hidden;border:1px solid #e0e0e0;\">" +
+    "<div style=\"background:#0A6847;padding:18px 20px;\">" +
+    "<h1 style=\"color:#fff;margin:0;font-size:18px;\">RD Fresh</h1></div>" +
+    `<div style="padding:24px;color:#222;">${bodyHtml}</div></div></body></html>`;
+}
+
+// New signup -> default to NOT credit-approved, and email Mike a review link.
+exports.onUserCreated = onDocumentCreated("users/{uid}", async (event) => {
+  const uid = event.params.uid;
+  const data = (event.data && event.data.data()) || {};
+
+  // Server-controlled gate flag: default new accounts to not-approved.
+  if (data.creditApproved === undefined) {
+    try {
+      await db.collection("users").doc(uid).update({creditApproved: false});
+    } catch (e) {
+      logger.error("Failed to set default creditApproved:", e);
+    }
+  }
+
+  // Don't ask Mike to approve admin accounts.
+  if (data.role === "admin") return;
+
+  try {
+    const token = await approvalToken(uid);
+    const reviewUrl =
+      `https://us-central1-rd-fresh.cloudfunctions.net/reviewCustomer?uid=${uid}&token=${token}`;
+    const name = escapeHtml(data.name || "(no name provided)");
+    const email = escapeHtml(data.email || "(no email)");
+    const {transporter, from} = await getMailTransporter();
+    await transporter.sendMail({
+      from,
+      to: "mike@rdfresh.com",
+      subject: `RD Fresh — New credit request: ${data.name || data.email || uid}`,
+      html: `
+        <p style="font-size:16px;margin:0 0 12px;">A new customer signed up and needs
+        credit approval before they can place orders.</p>
+        <table style="width:100%;border-collapse:collapse;margin:8px 0 20px;">
+          <tr><td style="padding:6px 0;color:#666;">Name</td>
+          <td style="padding:6px 0;font-weight:bold;">${name}</td></tr>
+          <tr><td style="padding:6px 0;color:#666;">Email</td>
+          <td style="padding:6px 0;font-weight:bold;">${email}</td></tr>
+          <tr><td style="padding:6px 0;color:#666;">Signed up</td>
+          <td style="padding:6px 0;">${new Date().toLocaleString()}</td></tr>
+        </table>
+        <a href="${reviewUrl}" style="display:inline-block;background:#0A6847;color:#fff;
+        text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;">
+        Review &amp; Approve</a>
+        <p style="font-size:12px;color:#999;margin:18px 0 0;">Until you approve, this customer
+        can browse but cannot place orders.</p>
+      `,
+    });
+    logger.info(`Sent signup approval email to Mike for ${data.email || uid}`);
+  } catch (e) {
+    logger.error("Failed to send signup approval email:", e);
+  }
+});
+
+// Mike's approval page. GET renders the review screen; POST performs approve/decline.
+exports.reviewCustomer = onRequest({invoker: "public"}, async (req, res) => {
+  try {
+    const uid = String((req.query && req.query.uid) || (req.body && req.body.uid) || "");
+    const token = String((req.query && req.query.token) || (req.body && req.body.token) || "");
+
+    if (!uid || !token) {
+      return res.status(400).send(htmlPage("Invalid link", "<p>This link is missing information.</p>"));
+    }
+
+    const expected = await approvalToken(uid);
+    if (!safeEqual(token, expected)) {
+      return res.status(403).send(htmlPage("Invalid link", "<p>This approval link isn't valid.</p>"));
+    }
+
+    const snap = await db.collection("users").doc(uid).get();
+    if (!snap.exists) {
+      return res.status(404).send(htmlPage("Not found", "<p>That customer no longer exists.</p>"));
+    }
+    const user = snap.data();
+    const label = escapeHtml(user.name || user.email || uid);
+
+    if (req.method === "POST") {
+      const action = String((req.body && req.body.action) || "");
+      if (action === "approve") {
+        await db.collection("users").doc(uid).update({
+          creditApproved: true,
+          approvedAt: new Date().toISOString(),
+        });
+        await db.collection("notifications").add({
+          title: "Account Approved",
+          message: "Your RD Fresh account has been approved. You can now place orders in the app.",
+          notifyTo: uid,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          type: "account_approved",
+          orderId: "",
+          readBy: [],
+        });
+        logger.info(`Customer ${uid} approved via email link`);
+        return res.status(200).send(htmlPage("Approved",
+            `<p style="font-size:16px;"><b>${label}</b> is approved and can now place orders.</p>`));
+      }
+      if (action === "decline") {
+        await db.collection("users").doc(uid).update({
+          creditApproved: false,
+          declinedAt: new Date().toISOString(),
+        });
+        logger.info(`Customer ${uid} declined via email link`);
+        return res.status(200).send(htmlPage("Declined",
+            `<p style="font-size:16px;"><b>${label}</b> remains blocked from ordering.</p>`));
+      }
+      return res.status(400).send(htmlPage("Unknown action", "<p>Please use the buttons on the review page.</p>"));
+    }
+
+    const already = user.creditApproved === true;
+    const statusLine = already ?
+      "<p style=\"color:#0A6847;font-weight:bold;\">This customer is already approved.</p>" : "";
+    return res.status(200).send(htmlPage("Review customer", `
+      ${statusLine}
+      <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">
+        <tr><td style="padding:6px 0;color:#666;">Name</td>
+        <td style="padding:6px 0;font-weight:bold;">${escapeHtml(user.name || "—")}</td></tr>
+        <tr><td style="padding:6px 0;color:#666;">Email</td>
+        <td style="padding:6px 0;font-weight:bold;">${escapeHtml(user.email || "—")}</td></tr>
+        <tr><td style="padding:6px 0;color:#666;">Phone</td>
+        <td style="padding:6px 0;">${escapeHtml(user.phone || "—")}</td></tr>
+      </table>
+      <form method="POST" action="/reviewCustomer" style="display:flex;gap:12px;">
+        <input type="hidden" name="uid" value="${escapeHtml(uid)}">
+        <input type="hidden" name="token" value="${escapeHtml(token)}">
+        <button type="submit" name="action" value="approve" style="flex:1;background:#0A6847;
+        color:#fff;border:none;padding:14px;border-radius:8px;font-size:15px;font-weight:bold;
+        cursor:pointer;">Approve</button>
+        <button type="submit" name="action" value="decline" style="flex:1;background:#fff;
+        color:#b00;border:1px solid #b00;padding:14px;border-radius:8px;font-size:15px;
+        font-weight:bold;cursor:pointer;">Decline</button>
+      </form>
+    `));
+  } catch (e) {
+    logger.error("reviewCustomer error:", e);
+    return res.status(500).send(htmlPage("Error", "<p>Something went wrong. Please try again.</p>"));
+  }
 });
