@@ -519,9 +519,11 @@ exports.shipstationWebhook = onRequest({invoker: "public"}, async (req, res) => 
       const now = new Date();
       const deadline = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
 
+      // SHIP_NOTIFY = order shipped -> mark "On the way" (NOT delivered).
+      // "delivered" is set only when the customer confirms bag installation.
       await orderDoc.ref.update({
-        status: "delivered",
-        deliveredAt: now.toISOString(),
+        status: "shipped",
+        shippedAt: now.toISOString(),
         bagChangeDeadline: deadline.toISOString(),
         signatureStatus: orderData.signatureStatus || "unsigned",
         remindersSent: 0,
@@ -539,8 +541,8 @@ exports.shipstationWebhook = onRequest({invoker: "public"}, async (req, res) => 
           const userId = userSnapshot.docs[0].id;
 
           await db.collection("notifications").add({
-            title: "Bags Delivered — Change Them Now!",
-            message: `Your RD Fresh bags for order #${orderNumber} have been delivered. Please install them in your walk-in cooler and confirm in the app.`,
+            title: "Your RD Fresh order is on the way!",
+            message: `Order #${orderNumber} has shipped. Once it arrives, install the bags in your walk-in cooler and confirm in the app to start your 30-day cycle.`,
             notifyTo: userId,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             type: "bag_change_reminder",
@@ -569,13 +571,13 @@ exports.dailyBagChangeReminder = onSchedule({
 }, async () => {
   try {
     const unsignedSnapshot = await db.collection("orders")
-        .where("status", "==", "delivered")
+        .where("status", "==", "shipped")
         .where("signatureStatus", "==", "unsigned")
         .where("escalated", "==", false)
         .get();
 
     if (unsignedSnapshot.empty) {
-      logger.info("No unsigned delivered orders found");
+      logger.info("No shipped orders awaiting bag-change confirmation");
       return;
     }
 
@@ -583,9 +585,9 @@ exports.dailyBagChangeReminder = onSchedule({
 
     for (const orderDoc of unsignedSnapshot.docs) {
       const order = orderDoc.data();
-      const deliveredAt = new Date(order.deliveredAt);
+      const shipTime = new Date(order.shippedAt || order.deliveredAt);
       const daysSinceDelivery = Math.floor(
-          (now - deliveredAt) / (1000 * 60 * 60 * 24),
+          (now - shipTime) / (1000 * 60 * 60 * 24),
       );
       const remindersSent = order.remindersSent || 0;
 
@@ -603,7 +605,7 @@ exports.dailyBagChangeReminder = onSchedule({
       if (remindersSent < 5) {
         await db.collection("notifications").add({
           title: `Day ${remindersSent + 1}: Change Your Bags!`,
-          message: `Your RD Fresh bags from order #${order.id || orderDoc.id} were delivered ${daysSinceDelivery} days ago. Please install them and confirm in the app.`,
+          message: `Your RD Fresh bags from order #${order.id || orderDoc.id} shipped ${daysSinceDelivery} days ago. Once they arrive, install them and confirm in the app.`,
           notifyTo: userId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           type: "bag_change_reminder",
@@ -647,7 +649,7 @@ exports.dailyBagChangeReminder = onSchedule({
                   <p style="font-size: 16px; color: #333;"><strong>${businessName}</strong> has not confirmed bag replacement.</p>
                   <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
                     <tr><td style="padding: 8px; color: #666;">Order Number</td><td style="padding: 8px; font-weight: bold;">#${order.id || orderDoc.id}</td></tr>
-                    <tr><td style="padding: 8px; color: #666;">Delivered On</td><td style="padding: 8px; font-weight: bold;">${new Date(order.deliveredAt).toLocaleDateString()}</td></tr>
+                    <tr><td style="padding: 8px; color: #666;">Shipped On</td><td style="padding: 8px; font-weight: bold;">${new Date(order.shippedAt || order.deliveredAt).toLocaleDateString()}</td></tr>
                     <tr><td style="padding: 8px; color: #666;">Days Overdue</td><td style="padding: 8px; font-weight: bold; color: #d32f2f;">${daysSinceDelivery} days</td></tr>
                     <tr><td style="padding: 8px; color: #666;">Contact Email</td><td style="padding: 8px;">${customerEmail}</td></tr>
                   </table>
@@ -662,7 +664,7 @@ exports.dailyBagChangeReminder = onSchedule({
 
         await db.collection("notifications").add({
           title: "Urgent: Bags Still Not Changed",
-          message: `It's been ${daysSinceDelivery} days since your bags were delivered. Your account manager has been notified. Please change your bags immediately and confirm in the app.`,
+          message: `It's been ${daysSinceDelivery} days since your bags shipped. Your account manager has been notified. Please install your bags and confirm in the app.`,
           notifyTo: userId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           type: "escalation",
