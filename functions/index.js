@@ -624,7 +624,7 @@ exports.dailyBagChangeReminder = onSchedule({
         logger.info(`ESCALATING order ${orderDoc.id} — no sign-off after 5 reminders`);
 
         const designatedContacts = userData.designatedContacts || [];
-        const MIKE_EMAIL = "mikerdfresh@gmail.com";
+        const MIKE_EMAIL = "mike@rdfresh.com";
         const uniqueEmails = [...new Set([
           ...designatedContacts.map((c) => c.email).filter(Boolean),
           MIKE_EMAIL,
@@ -796,7 +796,7 @@ exports.onUserCreated = onDocumentCreated("users/{uid}", async (event) => {
     const {transporter, from} = await getMailTransporter();
     await transporter.sendMail({
       from,
-      to: "mikerdfresh@gmail.com",
+      to: "mike@rdfresh.com",
       subject: `RD Fresh — New credit request: ${data.name || data.email || uid}`,
       html: `
         <p style="font-size:16px;margin:0 0 12px;">A new customer signed up and needs
