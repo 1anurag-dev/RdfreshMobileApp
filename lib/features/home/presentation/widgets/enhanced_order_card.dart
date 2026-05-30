@@ -50,10 +50,13 @@ class EnhancedOrderCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Order ${order.orderId}",
-                style: AppTypography.headlineSmall.copyWith(
-                  color: context.textPrimary,
+              Flexible(
+                child: Text(
+                  "Order ${order.orderId}",
+                  style: AppTypography.headlineSmall.copyWith(
+                    color: context.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               if (showSignatureWarning) AppBadge.error("Signature Required"),

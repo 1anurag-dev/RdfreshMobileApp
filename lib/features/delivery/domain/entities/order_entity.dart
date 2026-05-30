@@ -32,6 +32,13 @@ class OrderEntity extends Equatable {
   final String customerUsername;
   final String orderDate;
   final String createdAt;
+  final String? signedAt;
+  final String? deliveredAt;
+  final String? bagChangeDeadline;
+  final int remindersSent;
+  final String? lastReminderSentAt;
+  final bool escalated;
+  final String? escalatedAt;
 
   const OrderEntity({
     required this.orderId,
@@ -46,6 +53,13 @@ class OrderEntity extends Equatable {
     required this.customerUsername,
     required this.orderDate,
     required this.createdAt,
+    this.signedAt,
+    this.deliveredAt,
+    this.bagChangeDeadline,
+    this.remindersSent = 0,
+    this.lastReminderSentAt,
+    this.escalated = false,
+    this.escalatedAt,
   });
 
   @override
@@ -62,8 +76,23 @@ class OrderEntity extends Equatable {
     customerUsername,
     orderDate,
     createdAt,
+    signedAt,
+    deliveredAt,
+    bagChangeDeadline,
+    remindersSent,
+    lastReminderSentAt,
+    escalated,
+    escalatedAt,
   ];
 
-  bool get isDelivered => status == 'delivered';
-  bool get needsSignature => signatureStatus != 'signed' && !isDelivered;
+  bool get isDelivered => status.toLowerCase() == 'delivered';
+  bool get needsBagChange =>
+      isDelivered && signatureStatus != 'signed';
+
+  int get daysSinceDelivery {
+    if (deliveredAt == null) return 0;
+    final delivered = DateTime.tryParse(deliveredAt!);
+    if (delivered == null) return 0;
+    return DateTime.now().difference(delivered).inDays;
+  }
 }

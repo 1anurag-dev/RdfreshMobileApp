@@ -19,7 +19,7 @@ class CheckoutOrderRepositoryImpl implements CheckoutOrderRepository {
       final result = await remoteDataSource.createOrder(orderModel);
       return Right(result);
     } catch (e) {
-      return Left(ServerFailure(message: e.toString()));
+      return Left(ServerFailure(message: 'Unable to create order. Please try again.'));
     }
   }
 
@@ -29,7 +29,7 @@ class CheckoutOrderRepositoryImpl implements CheckoutOrderRepository {
       final result = await remoteDataSource.getOrder(orderId);
       return Right(result);
     } catch (e) {
-      return Left(ServerFailure(message: e.toString()));
+      return Left(ServerFailure(message: 'Unable to load order details. Please try again.'));
     }
   }
 
@@ -40,7 +40,7 @@ class CheckoutOrderRepositoryImpl implements CheckoutOrderRepository {
       await remoteDataSource.updateOrder(orderModel);
       return const Right(null);
     } catch (e) {
-      return Left(ServerFailure(message: e.toString()));
+      return Left(ServerFailure(message: 'Unable to update order. Please try again.'));
     }
   }
 }

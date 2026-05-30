@@ -1,29 +1,30 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:rdfresh/features/home/presentation/widgets/enhanced_order_card.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../../../core/widgets/app_components.dart';
-import '../../../../core/notification/presentation/widgets/enhanced_notification_bell.dart';
-
+import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/routes/app_routes.dart';
+import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
-import '../../../auth/presentation/bloc/auth_event.dart';
 import '../../../auth/presentation/bloc/auth_state.dart';
 import '../../../delivery/presentation/bloc/order_bloc.dart';
 import '../../../delivery/presentation/bloc/order_event.dart';
 import '../../../delivery/presentation/bloc/order_state.dart';
 import '../../../delivery/domain/entities/order_entity.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import '../../../Products/presentation/bloc/product_bloc.dart';
+import '../../../Products/presentation/bloc/product_event.dart';
+import '../../../Products/presentation/bloc/product_state.dart';
+import '../../../Products/domain/entities/product.dart';
 import '../../../cart/presentation/bloc/cart_bloc.dart';
 import '../../../cart/presentation/bloc/cart_event.dart';
 import '../../../cart/presentation/bloc/cart_state.dart';
+import '../../../cart/domain/entities/cart_item.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../injection_container.dart' as di;
-
-enum OrderStatusFilter { all, awaitingShipment, shipped, delivered }
-
-enum SignatureStatusFilter { all, unsigned, signed }
+import '../../../../core/widgets/app_toast.dart';
+import '../../../Products/presentation/pages/product_description_page.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,51 +34,22 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  Set<OrderStatusFilter> _selectedOrderStatusFilters = {OrderStatusFilter.all};
-  Set<SignatureStatusFilter> _selectedSignatureStatusFilters = {
-    SignatureStatusFilter.all,
-  };
+  static const _tips = [
+    'Did you know? Ethylene gas from one rotten apple can spoil an entire produce drawer in 24 hours.',
+    'Tip: Place RD Fresh packs near the evaporator fans for maximum absorption coverage.',
+    'Restaurants using zeolite packs report 30-50% less food waste each month.',
+    'Pro tip: Track your pack installation dates to maximize the 30-day absorption cycle.',
+    'Fun fact: Zeolite minerals are 100% natural volcanic rock — safe, non-toxic, and eco-friendly.',
+    'Save more: Depleted RD Fresh packs can be used as plant fertilizer in your garden.',
+  ];
 
-  List<OrderEntity> _applyFilters(List<OrderEntity> orders) {
-    List<OrderEntity> filteredOrders = List.from(orders);
+  late final String _todayTip;
 
-    if (!_selectedOrderStatusFilters.contains(OrderStatusFilter.all)) {
-      filteredOrders = filteredOrders.where((order) {
-        final status = order.status.toLowerCase();
-        return _selectedOrderStatusFilters.any((filter) {
-          switch (filter) {
-            case OrderStatusFilter.awaitingShipment:
-              return status == 'pending' ||
-                  status == 'ordered' ||
-                  status == 'processing';
-            case OrderStatusFilter.shipped:
-              return status == 'shipped';
-            case OrderStatusFilter.delivered:
-              return status == 'delivered';
-            default:
-              return false;
-          }
-        });
-      }).toList();
-    }
-
-    if (!_selectedSignatureStatusFilters.contains(SignatureStatusFilter.all)) {
-      filteredOrders = filteredOrders.where((order) {
-        final signatureStatus = order.signatureStatus?.toLowerCase() ?? '';
-        return _selectedSignatureStatusFilters.any((filter) {
-          switch (filter) {
-            case SignatureStatusFilter.unsigned:
-              return signatureStatus != 'signed';
-            case SignatureStatusFilter.signed:
-              return signatureStatus == 'signed';
-            default:
-              return false;
-          }
-        });
-      }).toList();
-    }
-
-    return filteredOrders;
+  @override
+  void initState() {
+    super.initState();
+    final dayOfYear = DateTime.now().difference(DateTime(DateTime.now().year)).inDays;
+    _todayTip = _tips[dayOfYear % _tips.length];
   }
 
   @override
@@ -86,819 +58,1030 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
-        if (state is Unauthenticated) {
-          context.go(AppRoutes.login);
-        }
+        if (state is Unauthenticated) context.go(AppRoutes.login);
       },
       child: MultiBlocProvider(
         providers: [
           BlocProvider(
-            create: (context) => di.sl<OrderBloc>()..add(LoadActiveOrders()),
+            create: (_) => di.sl<OrderBloc>()..add(LoadActiveOrders()),
           ),
           BlocProvider(
-            create: (context) => di.sl<CartBloc>()..add(LoadCart(userId)),
+            create: (_) => di.sl<CartBloc>()..add(LoadCart(userId)),
+          ),
+          BlocProvider(
+            create: (_) => di.sl<ProductBloc>()..add(LoadProducts()),
           ),
         ],
         child: Builder(
-          builder: (context) {
-            return Scaffold(
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-              appBar: _buildAppBar(context),
-              body: RefreshIndicator(
-                color: AppColors.primaryGreen,
-                onRefresh: () async {
-                  context.read<OrderBloc>().add(LoadActiveOrders());
-                  await Future.delayed(const Duration(milliseconds: 500));
-                },
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.only(
-                    left: AppSpacing.lg,
-                    right: AppSpacing.lg,
-                    bottom: MediaQuery.of(context).padding.bottom + 80,
-                  ),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: AppSpacing.lg),
-                      _buildHeroCard(context),
-                      const SizedBox(height: AppSpacing.xl),
-                      _buildQuickActions(context),
-                      const SizedBox(height: AppSpacing.xl),
-                      _buildOrdersSection(context),
-                      const SizedBox(height: AppSpacing.xxl),
-                    ],
-                  ),
+          builder: (context) => Scaffold(
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            body: RefreshIndicator(
+              color: AppColors.primaryGreen,
+              onRefresh: () async {
+                context.read<OrderBloc>().add(LoadActiveOrders());
+                context.read<ProductBloc>().add(LoadProducts());
+                await Future.delayed(const Duration(milliseconds: 400));
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom + 100,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(context),
+                    const SizedBox(height: 24),
+                    _buildHeroCard(context),
+                    const SizedBox(height: 16),
+                    _buildConsultationBanner(context),
+                    _buildBagChangeCard(context),
+                    _buildActiveOrdersBanner(context),
+                    const SizedBox(height: 24),
+                    _buildQuickStats(context),
+                    const SizedBox(height: 28),
+                    _buildProductHighlights(context),
+                    const SizedBox(height: 24),
+                    _buildTipCard(context),
+                  ],
                 ),
               ),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
-    return AppBar(
-      backgroundColor: context.surfaceColor,
-      elevation: 0,
-      scrolledUnderElevation: 0.5,
-      leadingWidth: 72,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 20),
-        child: GestureDetector(
-          onTap: () => context.push(AppRoutes.profile),
-          child: _buildAvatar(context),
-        ),
-      ),
-      title: const SizedBox.shrink(),
-      actions: [
-        BlocBuilder<CartBloc, CartState>(
-          builder: (context, state) {
-            final totalItems = state.items.length;
-            return _buildIconBadge(
-              context,
-              icon: Icons.shopping_bag_outlined,
-              count: totalItems,
-              onTap: () => context.push('/cart'),
-            );
-          },
-        ),
-        const NotificationBellIcon(),
-        IconButton(
-          icon: Icon(Icons.logout_rounded, color: context.textPrimary),
-          onPressed: () => context.read<AuthBloc>().add(LogoutRequested()),
-        ),
-        const SizedBox(width: 8),
-      ],
-    );
-  }
-
-  Widget _buildHeroCard(BuildContext context) {
+  Widget _buildHeader(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     final name = user?.displayName?.trim().isNotEmpty == true
         ? user!.displayName!.trim()
         : (user?.email?.split('@').first ?? 'there');
+    final initials = name
+        .split(RegExp(r'\s+|@'))
+        .where((p) => p.isNotEmpty)
+        .take(2)
+        .map((p) => p[0].toUpperCase())
+        .join();
 
-    return Container(
-      width: double.infinity,
-      padding: AppSpacing.cardPadding,
-      decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
-        borderRadius: AppRadius.baseBr,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryGreen.withValues(alpha: 0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "${_getGreeting()}, $name",
-            style: AppTypography.headlineMedium.copyWith(
-              color: Colors.white,
+    final hour = DateTime.now().hour;
+    String greeting;
+    if (hour >= 5 && hour < 12) {
+      greeting = 'Good morning';
+    } else if (hour >= 12 && hour < 17) {
+      greeting = 'Good afternoon';
+    } else if (hour >= 17 && hour < 21) {
+      greeting = 'Good evening';
+    } else {
+      greeting = 'Welcome back';
+    }
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: () => context.push(AppRoutes.profile),
+              child: CircleAvatar(
+                radius: 22,
+                backgroundColor:
+                    AppColors.primaryGreen.withValues(alpha: 0.1),
+                child: AutoSizeText(
+                  initials.isEmpty ? 'RD' : initials,
+                  style: const TextStyle(
+                    color: AppColors.primaryGreen,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                  maxLines: 1,
+                  minFontSize: 10,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            "Track your shipments and manage installations",
-            style: AppTypography.bodyMedium.copyWith(
-              color: Colors.white.withValues(alpha: 0.8),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AutoSizeText(
+                    '$greeting, $name',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: context.textPrimary,
+                    ),
+                    maxLines: 1,
+                    minFontSize: 14,
+                  ),
+                  AutoSizeText(
+                    'Manage your installations',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: context.textSecondary,
+                    ),
+                    maxLines: 1,
+                    minFontSize: 10,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            BlocBuilder<CartBloc, CartState>(
+              builder: (context, state) {
+                final count = state.items.length;
+                return IconButton(
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(
+                        Icons.shopping_cart_outlined,
+                        color: context.textSecondary,
+                        size: 24,
+                      ),
+                      if (count > 0)
+                        Positioned(
+                          right: -6,
+                          top: -4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '$count',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  onPressed: () => context.push(AppRoutes.cart),
+                );
+              },
+            ),
+            IconButton(
+              icon: Icon(
+                Icons.settings_rounded,
+                color: context.textSecondary,
+                size: 24,
+              ),
+              onPressed: () => context.push(AppRoutes.profile),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildQuickActions(BuildContext context) {
+  Widget _buildHeroCard(BuildContext context) {
     return BlocBuilder<OrderBloc, OrderState>(
       builder: (context, state) {
-        final orders = state is ActiveOrdersLoaded ? state.orders : <OrderEntity>[];
-
+        final orders =
+            state is ActiveOrdersLoaded ? state.orders : <OrderEntity>[];
         final lastOrder = orders.isNotEmpty ? orders.first : null;
-        final lastOrderName = lastOrder != null
-            ? 'Order #${lastOrder.orderId.length > 6 ? lastOrder.orderId.substring(lastOrder.orderId.length - 6) : lastOrder.orderId}'
-            : 'No orders yet';
 
-        int daysRemaining = 90;
+        int daysRemaining = 30;
         if (lastOrder != null) {
           final orderDate = DateTime.tryParse(lastOrder.orderDate);
           if (orderDate != null) {
             final daysSince = DateTime.now().difference(orderDate).inDays;
-            daysRemaining = (90 - daysSince).clamp(0, 90);
+            daysRemaining = (30 - daysSince).clamp(0, 30);
           }
         }
 
-        final now = DateTime.now();
-        final startOfMonth = DateTime(now.year, now.month, 1);
-        double savingsThisMonth = 0;
-        for (final order in orders) {
-          final orderDate = DateTime.tryParse(order.orderDate);
-          if (orderDate != null && orderDate.isAfter(startOfMonth)) {
-            savingsThisMonth += order.totalAmount.toDouble() * 0.15;
-          }
-        }
+        final progress = lastOrder != null ? daysRemaining / 30.0 : 1.0;
+        final statusText = lastOrder != null
+            ? 'Replace in $daysRemaining days'
+            : 'No active installation';
 
-        return Row(
-          children: [
-            _buildValueCard(
-              context,
-              icon: Icons.replay_rounded,
-              label: 'Reorder',
-              value: lastOrder != null ? 'Last Order' : '—',
-              subtitle: lastOrderName,
-              onTap: () {
-                if (lastOrder == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('No previous orders to reorder')),
-                  );
-                  return;
-                }
-                context.push('${AppRoutes.deliveryStatus}/${lastOrder.orderId}');
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0A6847), Color(0xFF064E34)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primaryGreen.withValues(alpha: 0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AutoSizeText(
+                            'Active Installation',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.5,
+                            ),
+                            maxLines: 1,
+                            minFontSize: 10,
+                          ),
+                          const SizedBox(height: 8),
+                          AutoSizeText(
+                            statusText,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                            ),
+                            maxLines: 2,
+                            minFontSize: 16,
+                          ),
+                          const SizedBox(height: 16),
+                          GestureDetector(
+                            onTap: () => context.go(AppRoutes.products),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const AutoSizeText(
+                                'Reorder Now',
+                                style: TextStyle(
+                                  color: Color(0xFF0A6847),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                maxLines: 1,
+                                minFontSize: 10,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    SizedBox(
+                      width: 100,
+                      height: 100,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: 100,
+                            height: 100,
+                            child: CircularProgressIndicator(
+                              value: progress,
+                              strokeWidth: 8,
+                              backgroundColor:
+                                  Colors.white.withValues(alpha: 0.15),
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                              strokeCap: StrokeCap.round,
+                            ),
+                          ),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AutoSizeText(
+                                lastOrder != null ? '$daysRemaining' : '--',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                                maxLines: 1,
+                              ),
+                              AutoSizeText(
+                                'days',
+                                style: TextStyle(
+                                  color:
+                                      Colors.white.withValues(alpha: 0.7),
+                                  fontSize: 12,
+                                ),
+                                maxLines: 1,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
               },
             ),
-            _buildDaysRemainingCard(context, daysRemaining, lastOrder != null),
-            _buildValueCard(
-              context,
-              icon: Icons.savings_outlined,
-              label: 'Savings',
-              value: '\$${savingsThisMonth.toStringAsFixed(0)}',
-              subtitle: 'This month',
-              onTap: () {},
-            ),
-            _buildValueCard(
-              context,
-              icon: Icons.help_outline_rounded,
-              label: 'Help',
-              value: 'FAQ',
-              subtitle: '& Support',
-              onTap: () => context.go(AppRoutes.support),
-            ),
-          ],
+          ),
         );
       },
     );
   }
 
-  Widget _buildAvatar(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final seed = user?.displayName?.trim().isNotEmpty == true
-        ? user!.displayName!.trim()
-        : (user?.email ?? 'RD Fresh');
-    final initials = seed
-        .split(RegExp(r'\s+|@'))
-        .where((part) => part.isNotEmpty)
-        .take(2)
-        .map((part) => part[0].toUpperCase())
-        .join();
+  Widget _buildConsultationBanner(BuildContext context) {
+    final isGuest = FirebaseAuth.instance.currentUser == null;
 
-    return CircleAvatar(
-      radius: 22,
-      backgroundColor: AppColors.primaryGreen.withValues(alpha: 0.1),
-      child: Text(
-        initials.isEmpty ? 'RD' : initials,
-        style: AppTypography.labelLarge.copyWith(
-          color: AppColors.primaryGreen,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
+    return BlocBuilder<OrderBloc, OrderState>(
+      builder: (context, state) {
+        final orders =
+            state is ActiveOrdersLoaded ? state.orders : <OrderEntity>[];
 
-  Widget _buildIconBadge(
-    BuildContext context, {
-    required IconData icon,
-    required int count,
-    required VoidCallback onTap,
-  }) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        IconButton(
-          icon: Icon(icon, color: context.textPrimary),
-          onPressed: onTap,
-        ),
-        if (count > 0)
-          Positioned(
-            right: 7,
-            top: 7,
+        if (!isGuest && orders.isNotEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
+          child: GestureDetector(
+            onTap: _launchPhone,
             child: Container(
-              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-              padding: const EdgeInsets.symmetric(horizontal: 5),
-              decoration: const BoxDecoration(
-                color: AppColors.primaryGreen,
-                shape: BoxShape.circle,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8E7),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.amber.shade200),
               ),
-              alignment: Alignment.center,
-              child: Text(
-                '$count',
-                style: AppTypography.labelSmall.copyWith(
-                  color: Colors.white,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.phone_in_talk_rounded,
+                    color: Colors.amber.shade800,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AutoSizeText(
+                          'New here? Get a FREE Consultation',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade800,
+                          ),
+                          maxLines: 1,
+                          minFontSize: 12,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Talk to our team before placing your first order',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: _launchPhone,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0A6847),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: const Text(
+                        'Call Now',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  // TODO: Replace with real phone number from Mike
+  Future<void> _launchPhone() async {
+    final uri = Uri.parse('tel:+18007337374');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  Widget _buildBagChangeCard(BuildContext context) {
+    final email = FirebaseAuth.instance.currentUser?.email;
+    if (email == null) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where('customerEmail', isEqualTo: email)
+          .where('status', isEqualTo: 'delivered')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+
+        final unsignedOrders = snapshot.data!.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['signatureStatus'] != 'signed';
+        }).toList();
+
+        if (unsignedOrders.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          children: unsignedOrders.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final orderNumber = data['id'] ?? data['orderId'] ?? doc.id;
+            final deliveredAt = data['deliveredAt'] as String?;
+            int daysSince = 0;
+            if (deliveredAt != null) {
+              final delivered = DateTime.tryParse(deliveredAt);
+              if (delivered != null) {
+                daysSince = DateTime.now().difference(delivered).inDays;
+              }
+            }
+
+            final isUrgent = daysSince >= 4;
+            final bgColor = isUrgent ? AppColors.error : AppColors.warning;
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: GestureDetector(
+                onTap: () => context.push('${AppRoutes.bagChange}/${doc.id}'),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: bgColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: bgColor.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: bgColor.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.notifications_active_rounded,
+                          color: bgColor,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            AutoSizeText(
+                              'Time to Change Your Bags!',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: context.textPrimary,
+                              ),
+                              maxLines: 1,
+                              minFontSize: 12,
+                            ),
+                            const SizedBox(height: 4),
+                            AutoSizeText(
+                              daysSince > 0
+                                  ? 'Order #$orderNumber delivered $daysSince day${daysSince == 1 ? '' : 's'} ago'
+                                  : 'Order #$orderNumber — install your bags now',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: context.textSecondary,
+                              ),
+                              maxLines: 1,
+                              minFontSize: 10,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const AutoSizeText(
+                          'Confirm',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildActiveOrdersBanner(BuildContext context) {
+    return BlocBuilder<OrderBloc, OrderState>(
+      builder: (context, state) {
+        if (state is! ActiveOrdersLoaded) return const SizedBox.shrink();
+
+        final activeOrders = state.orders
+            .where((o) =>
+                o.status.toLowerCase() != 'delivered' &&
+                o.status.toLowerCase() != 'completed')
+            .toList();
+
+        if (activeOrders.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: GestureDetector(
+            onTap: () => context.push(AppRoutes.activeOrders),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.info.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppColors.info.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.info.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.local_shipping_rounded,
+                      color: AppColors.info,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: AutoSizeText(
+                      'You have ${activeOrders.length} active order${activeOrders.length == 1 ? '' : 's'}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: context.textPrimary,
+                      ),
+                      maxLines: 1,
+                      minFontSize: 11,
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: context.textTertiary,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildQuickStats(BuildContext context) {
+    return BlocBuilder<OrderBloc, OrderState>(
+      builder: (context, state) {
+        final orders =
+            state is ActiveOrdersLoaded ? state.orders : <OrderEntity>[];
+
+        final totalOrders = orders.length;
+
+        final now = DateTime.now();
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        double savings = 0;
+        for (final o in orders) {
+          final d = DateTime.tryParse(o.orderDate);
+          if (d != null && d.isAfter(startOfMonth)) {
+            savings += o.totalAmount.toDouble() * 0.15;
+          }
+        }
+
+        return SizedBox(
+          height: 120,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              _StatCard(
+                icon: Icons.receipt_long_rounded,
+                label: 'Total Orders',
+                value: '$totalOrders',
+                color: AppColors.info,
+              ),
+              const SizedBox(width: 12),
+              _StatCard(
+                icon: Icons.savings_rounded,
+                label: 'Approximate Savings This Month',
+                subtitle: 'Based on estimated food waste reduction',
+                value: '\$${savings.toStringAsFixed(0)}',
+                color: AppColors.success,
+              ),
+              const SizedBox(width: 12),
+              BlocBuilder<ProductBloc, ProductState>(
+                builder: (context, pState) {
+                  final count =
+                      pState is ProductLoaded ? pState.products.length : 0;
+                  return _StatCard(
+                    icon: Icons.eco_rounded,
+                    label: 'Products Active',
+                    value: '$count',
+                    color: AppColors.primaryGreen,
+                  );
+                },
+              ),
+              const SizedBox(width: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildProductHighlights(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              Expanded(
+                child: AutoSizeText(
+                  'Our Products',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: context.textPrimary,
+                  ),
+                  maxLines: 1,
+                  minFontSize: 16,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => context.go(AppRoutes.products),
+                child: const Text(
+                  'See All →',
+                  style: TextStyle(
+                    color: AppColors.primaryGreen,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 200,
+          child: BlocBuilder<ProductBloc, ProductState>(
+            builder: (context, state) {
+              if (state is ProductLoading) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.primaryGreen,
+                  ),
+                );
+              }
+              if (state is ProductLoaded && state.products.isNotEmpty) {
+                return ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  itemCount: state.products.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (context, i) =>
+                      _ProductMiniCard(product: state.products[i]),
+                );
+              }
+              return Center(
+                child: Text(
+                  'No products available',
+                  style: TextStyle(color: context.textSecondary),
+                ),
+              );
+            },
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildValueCard(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String value,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.only(right: AppSpacing.sm),
-        child: InkWell(
-          borderRadius: AppRadius.baseBr,
-          onTap: onTap,
-          child: Container(
-            height: 90,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-              vertical: AppSpacing.md,
+  Widget _buildTipCard(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8F5E9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.primaryGreen.withValues(alpha: 0.15),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.lightbulb_rounded,
+              color: AppColors.primaryGreen,
+              size: 22,
             ),
-            decoration: BoxDecoration(
-              color: AppColors.primaryGreen.withValues(alpha: 0.06),
-              borderRadius: AppRadius.baseBr,
-              border: Border.all(
-                color: AppColors.primaryGreen.withValues(alpha: 0.12),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AutoSizeText(
+                    'Tip of the Day',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1B3A2D),
+                    ),
+                    maxLines: 1,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _todayTip,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: const Color(0xFF1B3A2D).withValues(alpha: 0.7),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: AppColors.primaryGreen, size: 20),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.titleSmall.copyWith(
-                    color: context.textPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.small.copyWith(
-                    color: context.textSecondary,
-                    fontSize: 9,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildDaysRemainingCard(
-    BuildContext context,
-    int daysRemaining,
-    bool hasOrders,
-  ) {
-    final isUrgent = daysRemaining <= 5 && hasOrders;
-    final iconColor = isUrgent ? AppColors.error : AppColors.primaryGreen;
-    final bgColor = isUrgent
-        ? AppColors.error.withValues(alpha: 0.06)
-        : AppColors.primaryGreen.withValues(alpha: 0.06);
-    final borderColor = isUrgent
-        ? AppColors.error.withValues(alpha: 0.15)
-        : AppColors.primaryGreen.withValues(alpha: 0.12);
+class _StatCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? subtitle;
+  final String value;
+  final Color color;
 
-    Widget card = Expanded(
-      child: Padding(
-        padding: const EdgeInsets.only(right: AppSpacing.sm),
-        child: Container(
-          height: 90,
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm,
-            vertical: AppSpacing.md,
-          ),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: AppRadius.baseBr,
-            border: Border.all(color: borderColor),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.timer_outlined, color: iconColor, size: 20),
-              const SizedBox(height: 4),
-              Text(
-                hasOrders ? '$daysRemaining' : '—',
-                maxLines: 1,
-                style: AppTypography.titleSmall.copyWith(
-                  color: isUrgent ? AppColors.error : context.textPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              Text(
-                'Days Left',
-                maxLines: 1,
-                style: AppTypography.small.copyWith(
-                  color: context.textSecondary,
-                  fontSize: 9,
-                ),
-              ),
-            ],
-          ),
-        ),
+  const _StatCard({
+    required this.icon,
+    required this.label,
+    this.subtitle,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 140,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
       ),
-    );
-
-    if (isUrgent) {
-      card = Expanded(
-        child: Padding(
-          padding: const EdgeInsets.only(right: AppSpacing.sm),
-          child: Container(
-            height: 90,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-              vertical: AppSpacing.md,
-            ),
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: AppRadius.baseBr,
-              border: Border.all(color: borderColor),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.timer_outlined, color: iconColor, size: 20)
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .scale(
-                      begin: const Offset(1, 1),
-                      end: const Offset(1.2, 1.2),
-                      duration: 800.ms,
-                    )
-                    .tint(color: AppColors.error.withValues(alpha: 0.3)),
-                const SizedBox(height: 4),
-                Text(
-                  '$daysRemaining',
-                  maxLines: 1,
-                  style: AppTypography.titleSmall.copyWith(
-                    color: AppColors.error,
-                    fontWeight: FontWeight.w700,
-                  ),
-                )
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .fadeIn(duration: 600.ms)
-                    .then()
-                    .shake(hz: 2, duration: 400.ms),
-                Text(
-                  'Days Left',
-                  maxLines: 1,
-                  style: AppTypography.small.copyWith(
-                    color: AppColors.error.withValues(alpha: 0.7),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return card;
-  }
-
-  Widget _buildOrdersSection(BuildContext context) {
-    return AppSurface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  "All Orders",
-                  style: AppTypography.headlineMedium.copyWith(
-                    color: context.textPrimary,
-                  ),
-                ),
-              ),
-              Flexible(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Flexible(child: _buildCompactOrderStatusDropdown(context)),
-                    const SizedBox(width: AppSpacing.sm),
-                    Flexible(child: _buildCompactSignatureStatusDropdown(context)),
-                  ],
-                ),
-              ),
-            ],
+          Icon(icon, color: color, size: 22),
+          const SizedBox(height: 8),
+          AutoSizeText(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: context.textPrimary,
+            ),
+            maxLines: 1,
+            minFontSize: 14,
           ),
-          const SizedBox(height: AppSpacing.base),
-          BlocBuilder<OrderBloc, OrderState>(
-            builder: (context, state) {
-              if (state is OrderLoading) {
-                return const ShimmerList(itemCount: 3, itemHeight: 100);
-              }
-
-              if (state is OrderError) {
-                return AppEmptyState(
-                  icon: Icons.error_outline_rounded,
-                  title: 'Unable to load orders',
-                  subtitle: 'Pull down to refresh and try again',
-                );
-              }
-
-              if (state is ActiveOrdersLoaded) {
-                if (state.orders.isEmpty) {
-                  return AppEmptyState(
-                    icon: Icons.local_shipping_outlined,
-                    title: 'No Orders Found',
-                    subtitle: 'Your orders will appear here.\n'
-                        'Track your shipments in real-time.',
-                  );
-                }
-
-                final filteredOrders = _applyFilters(state.orders);
-
-                if (filteredOrders.isEmpty) {
-                  return AppEmptyState(
-                    icon: Icons.filter_list_rounded,
-                    title: 'No Orders Found',
-                    subtitle: 'Try adjusting your filters',
-                  );
-                }
-
-                final displayOrders = filteredOrders.take(3).toList();
-
-                return Column(
-                  children: [
-                    ...displayOrders.map((order) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                        child: EnhancedOrderCard(
-                          order: order,
-                          onPress: () {
-                            context.push(
-                              '${AppRoutes.deliveryStatus}/${order.orderId}',
-                            );
-                          },
-                        ),
-                      );
-                    }),
-                    if (filteredOrders.length > 3)
-                      Center(
-                        child: TextButton(
-                          onPressed: () => context.push(AppRoutes.activeOrders),
-                          child: Text(
-                            'View All Orders (${filteredOrders.length})',
-                            style: AppTypography.labelLarge.copyWith(
-                              color: AppColors.primaryGreen,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              }
-
-              return const SizedBox.shrink();
-            },
+          AutoSizeText(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: context.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 2,
+            minFontSize: 8,
           ),
+          if (subtitle != null)
+            AutoSizeText(
+              subtitle!,
+              style: TextStyle(
+                fontSize: 8,
+                color: context.textSecondary.withValues(alpha: 0.7),
+              ),
+              maxLines: 2,
+              minFontSize: 6,
+            ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildCompactOrderStatusDropdown(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 100),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        border: Border.all(color: context.borderColor),
-        borderRadius: AppRadius.smBr,
-        color: context.cardColor,
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<OrderStatusFilter>(
-          isDense: true,
-          isExpanded: true,
-          hint: Text(
-            'Status',
-            style: AppTypography.caption.copyWith(color: context.textTertiary),
-            overflow: TextOverflow.ellipsis,
+class _ProductMiniCard extends StatelessWidget {
+  final Product product;
+
+  const _ProductMiniCard({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) => di.sl<CartBloc>()..add(LoadCart(userId)),
+            child: ProductDescriptionPage(product: product),
           ),
-          value: _selectedOrderStatusFilters.length == 1
-              ? _selectedOrderStatusFilters.first
-              : null,
-          items: OrderStatusFilter.values.map((filter) {
-            return DropdownMenuItem<OrderStatusFilter>(
-              value: filter,
-              child: StatefulBuilder(
-                builder: (context, setState) {
-                  final isSelected =
-                      _selectedOrderStatusFilters.contains(filter);
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: Checkbox(
-                          value: isSelected,
-                          onChanged: (bool? value) {
-                            setState(() => _toggleOrderStatusFilter(filter));
-                            this.setState(() {});
-                          },
-                          activeColor: AppColors.primaryGreen,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
+        ),
+      ),
+      child: Container(
+        width: 150,
+        decoration: BoxDecoration(
+          color: context.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: context.borderColor.withValues(alpha: 0.3)),
+          boxShadow: context.cardShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
+              child: SizedBox(
+                height: 100,
+                width: double.infinity,
+                child: product.imageUrl.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: product.imageUrl,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Container(
+                          color: AppColors.primaryGreen.withValues(alpha: 0.08),
+                          child: const Icon(Icons.eco_rounded,
+                              color: AppColors.primaryGreen, size: 32),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          _getOrderStatusLabel(filter),
-                          style: AppTypography.caption.copyWith(
-                            color: isSelected
-                                ? AppColors.primaryGreen
-                                : context.textPrimary,
-                            fontWeight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.normal,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                        errorWidget: (_, __, ___) => Container(
+                          color: AppColors.primaryGreen.withValues(alpha: 0.08),
+                          child: const Icon(Icons.eco_rounded,
+                              color: AppColors.primaryGreen, size: 32),
                         ),
+                      )
+                    : Container(
+                        color: AppColors.primaryGreen.withValues(alpha: 0.08),
+                        child: const Icon(Icons.eco_rounded,
+                            color: AppColors.primaryGreen, size: 32),
                       ),
-                    ],
-                  );
-                },
               ),
-            );
-          }).toList(),
-          onChanged: (OrderStatusFilter? newValue) {
-            if (newValue != null) {
-              setState(() => _toggleOrderStatusFilter(newValue));
-            }
-          },
-          selectedItemBuilder: (BuildContext context) {
-            return OrderStatusFilter.values.map((filter) {
-              if (_selectedOrderStatusFilters.contains(OrderStatusFilter.all)) {
-                return Text(
-                  'All',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.primaryGreen,
-                    fontWeight: FontWeight.w600,
-                  ),
-                );
-              } else if (_selectedOrderStatusFilters.isEmpty) {
-                return Text(
-                  'Status',
-                  style: AppTypography.caption
-                      .copyWith(color: context.textTertiary),
-                );
-              } else {
-                return Text(
-                  '${_selectedOrderStatusFilters.length}',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.primaryGreen,
-                    fontWeight: FontWeight.w700,
-                  ),
-                );
-              }
-            }).toList();
-          },
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: AutoSizeText(
+                        product.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: context.textPrimary,
+                        ),
+                        maxLines: 2,
+                        minFontSize: 10,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: AutoSizeText(
+                            '\$${product.price.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primaryGreen,
+                            ),
+                            maxLines: 1,
+                            minFontSize: 11,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            final currentUser = FirebaseAuth.instance.currentUser;
+                            if (currentUser == null) {
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  title: const Text('Sign In Required'),
+                                  content: const Text('Please sign in or create an account to add items to your cart.'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(ctx).pop(),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        Navigator.of(ctx).pop();
+                                        context.go(AppRoutes.login);
+                                      },
+                                      child: const Text('Sign In'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              return;
+                            }
+                            context.read<CartBloc>().add(
+                                  AddProductToCart(
+                                    CartItem(
+                                      productId: product.id,
+                                      sku: product.sku,
+                                      name: product.name,
+                                      price: product.price,
+                                      imageUrl: product.imageUrl,
+                                    ),
+                                    userId,
+                                  ),
+                                );
+                            AppToast.show(context, message: '${product.name} added to cart');
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryGreen,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.add,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
-  }
-
-  Widget _buildCompactSignatureStatusDropdown(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 100),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        border: Border.all(color: context.borderColor),
-        borderRadius: AppRadius.smBr,
-        color: context.cardColor,
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<SignatureStatusFilter>(
-          isDense: true,
-          isExpanded: true,
-          hint: Text(
-            'Signature',
-            style: AppTypography.caption.copyWith(color: context.textTertiary),
-            overflow: TextOverflow.ellipsis,
-          ),
-          value: _selectedSignatureStatusFilters.length == 1
-              ? _selectedSignatureStatusFilters.first
-              : null,
-          items: SignatureStatusFilter.values.map((filter) {
-            return DropdownMenuItem<SignatureStatusFilter>(
-              value: filter,
-              child: StatefulBuilder(
-                builder: (context, setState) {
-                  final isSelected =
-                      _selectedSignatureStatusFilters.contains(filter);
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: Checkbox(
-                          value: isSelected,
-                          onChanged: (bool? value) {
-                            setState(
-                                () => _toggleSignatureStatusFilter(filter));
-                            this.setState(() {});
-                          },
-                          activeColor: AppColors.accent,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          _getSignatureStatusLabel(filter),
-                          style: AppTypography.caption.copyWith(
-                            color: isSelected
-                                ? AppColors.accent
-                                : context.textPrimary,
-                            fontWeight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.normal,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            );
-          }).toList(),
-          onChanged: (SignatureStatusFilter? newValue) {
-            if (newValue != null) {
-              setState(() => _toggleSignatureStatusFilter(newValue));
-            }
-          },
-          selectedItemBuilder: (BuildContext context) {
-            return SignatureStatusFilter.values.map((filter) {
-              if (_selectedSignatureStatusFilters
-                  .contains(SignatureStatusFilter.all)) {
-                return Text(
-                  'All',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.w600,
-                  ),
-                );
-              } else if (_selectedSignatureStatusFilters.isEmpty) {
-                return Text(
-                  'Signature',
-                  style: AppTypography.caption
-                      .copyWith(color: context.textTertiary),
-                );
-              } else {
-                return Text(
-                  '${_selectedSignatureStatusFilters.length}',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                );
-              }
-            }).toList();
-          },
-        ),
-      ),
-    );
-  }
-
-  void _toggleOrderStatusFilter(OrderStatusFilter filter) {
-    setState(() {
-      if (filter == OrderStatusFilter.all) {
-        _selectedOrderStatusFilters = {OrderStatusFilter.all};
-      } else {
-        Set<OrderStatusFilter> newFilters =
-            Set.from(_selectedOrderStatusFilters);
-        if (newFilters.contains(filter)) {
-          newFilters.remove(filter);
-        } else {
-          newFilters.add(filter);
-          newFilters.remove(OrderStatusFilter.all);
-        }
-        _selectedOrderStatusFilters =
-            newFilters.isEmpty ? {OrderStatusFilter.all} : newFilters;
-      }
-    });
-  }
-
-  void _toggleSignatureStatusFilter(SignatureStatusFilter filter) {
-    setState(() {
-      if (filter == SignatureStatusFilter.all) {
-        _selectedSignatureStatusFilters = {SignatureStatusFilter.all};
-      } else {
-        Set<SignatureStatusFilter> newFilters =
-            Set.from(_selectedSignatureStatusFilters);
-        if (newFilters.contains(filter)) {
-          newFilters.remove(filter);
-        } else {
-          newFilters.add(filter);
-          newFilters.remove(SignatureStatusFilter.all);
-        }
-        _selectedSignatureStatusFilters =
-            newFilters.isEmpty ? {SignatureStatusFilter.all} : newFilters;
-      }
-    });
-  }
-
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour >= 5 && hour < 12) return 'Good morning';
-    if (hour >= 12 && hour < 17) return 'Good afternoon';
-    if (hour >= 17 && hour < 21) return 'Good evening';
-    return 'Welcome back';
-  }
-
-  String _getOrderStatusLabel(OrderStatusFilter filter) {
-    switch (filter) {
-      case OrderStatusFilter.all:
-        return 'All Orders';
-      case OrderStatusFilter.awaitingShipment:
-        return 'Awaiting';
-      case OrderStatusFilter.shipped:
-        return 'Shipped';
-      case OrderStatusFilter.delivered:
-        return 'Delivered';
-    }
-  }
-
-  String _getSignatureStatusLabel(SignatureStatusFilter filter) {
-    switch (filter) {
-      case SignatureStatusFilter.all:
-        return 'All';
-      case SignatureStatusFilter.unsigned:
-        return 'Unsigned';
-      case SignatureStatusFilter.signed:
-        return 'Signed';
-    }
   }
 }
+

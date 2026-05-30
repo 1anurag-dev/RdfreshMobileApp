@@ -22,7 +22,7 @@ class MorePage extends StatelessWidget {
         centerTitle: false,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
         children: [
           Text(
             'Resources and account tools for your team.',
@@ -45,6 +45,14 @@ class MorePage extends StatelessWidget {
             subtitle: 'Get in touch with our help center',
             icon: Icons.headset_mic_outlined,
             onTap: () => context.push(AppRoutes.support),
+          ),
+          const SizedBox(height: AppSpacing.base),
+          _buildMoreTile(
+            context,
+            title: 'Delete Account',
+            subtitle: 'Permanently delete your account and data',
+            icon: Icons.delete_forever_rounded,
+            onTap: () => context.push(AppRoutes.profile),
           ),
         ],
       ),

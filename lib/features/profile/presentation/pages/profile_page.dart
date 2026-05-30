@@ -2,9 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
+import 'package:auto_size_text/auto_size_text.dart';
+
+import 'package:cloud_functions/cloud_functions.dart';
+import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../auth/presentation/bloc/auth_event.dart';
+import '../../../auth/presentation/bloc/auth_state.dart';
+import '../../../../core/widgets/app_toast.dart';
+import '../../data/models/designated_contact.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -18,6 +26,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final _cityController = TextEditingController();
   final _stateController = TextEditingController();
   final _zipController = TextEditingController();
+  final _phoneController = TextEditingController();
 
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
@@ -25,11 +34,15 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isLoadingAddress = true;
   bool _isSavingAddress = false;
   bool _isChangingPassword = false;
+  bool _editingProfile = false;
+  List<DesignatedContact> _designatedContacts = [];
+  bool _isLoadingContacts = true;
 
   @override
   void initState() {
     super.initState();
     _loadShippingAddress();
+    _loadDesignatedContacts();
   }
 
   @override
@@ -38,6 +51,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _cityController.dispose();
     _stateController.dispose();
     _zipController.dispose();
+    _phoneController.dispose();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     super.dispose();
@@ -51,11 +65,12 @@ class _ProfilePageState extends State<ProfilePage> {
       final doc =
           await FirebaseFirestore.instance.collection('users').doc(uid).get();
       if (doc.exists) {
-        final data = doc.data()!;
+        final data = doc.data() ?? {};
         _addressController.text = data['shippingAddress'] as String? ?? '';
         _cityController.text = data['shippingCity'] as String? ?? '';
         _stateController.text = data['shippingState'] as String? ?? '';
         _zipController.text = data['shippingZip'] as String? ?? '';
+        _phoneController.text = data['phone'] as String? ?? '';
       }
     } catch (_) {}
 
@@ -73,27 +88,133 @@ class _ProfilePageState extends State<ProfilePage> {
         'shippingCity': _cityController.text.trim(),
         'shippingState': _stateController.text.trim(),
         'shippingZip': _zipController.text.trim(),
+        'phone': _phoneController.text.trim(),
       }, SetOptions(merge: true));
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Shipping address saved'),
-            backgroundColor: AppColors.primaryGreen,
-          ),
-        );
+        setState(() => _editingProfile = false);
+        AppToast.show(context, message: 'Profile updated');
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save address: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        AppToast.show(context, message: 'Unable to save. Check your connection.', type: ToastType.error);
       }
     }
     if (mounted) setState(() => _isSavingAddress = false);
+  }
+
+  Future<void> _loadDesignatedContacts() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (doc.exists) {
+        final data = doc.data() ?? {};
+        final rawContacts = data['designatedContacts'] as List<dynamic>? ?? [];
+        _designatedContacts = rawContacts
+            .map((c) =>
+                DesignatedContact.fromJson(Map<String, dynamic>.from(c as Map)))
+            .toList();
+      }
+    } catch (_) {}
+
+    if (mounted) setState(() => _isLoadingContacts = false);
+  }
+
+  Future<void> _saveDesignatedContacts() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'designatedContacts':
+            _designatedContacts.map((c) => c.toJson()).toList(),
+      }, SetOptions(merge: true));
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(context,
+            message: 'Failed to save contacts', type: ToastType.error);
+      }
+    }
+  }
+
+  void _showAddContactDialog() {
+    final nameCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Add Escalation Contact',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: 'Email',
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Cancel',
+                style: TextStyle(color: context.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              final email = emailCtrl.text.trim();
+              if (name.isEmpty || email.isEmpty) {
+                AppToast.show(context,
+                    message: 'Please fill in both fields',
+                    type: ToastType.error);
+                return;
+              }
+              Navigator.of(ctx).pop();
+              setState(() {
+                _designatedContacts
+                    .add(DesignatedContact(name: name, email: email));
+              });
+              _saveDesignatedContacts();
+              AppToast.show(context, message: 'Contact added');
+            },
+            child: const Text('Add',
+                style: TextStyle(
+                    color: AppColors.primaryGreen,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _removeContact(int index) {
+    setState(() => _designatedContacts.removeAt(index));
+    _saveDesignatedContacts();
+    AppToast.show(context, message: 'Contact removed');
   }
 
   Future<void> _changePassword() async {
@@ -101,29 +222,26 @@ class _ProfilePageState extends State<ProfilePage> {
     final newPassword = _newPasswordController.text.trim();
 
     if (currentPassword.isEmpty || newPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill in both password fields'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      AppToast.show(context, message: 'Please fill in both password fields', type: ToastType.error);
       return;
     }
 
     if (newPassword.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('New password must be at least 6 characters'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      AppToast.show(context, message: 'New password must be at least 6 characters', type: ToastType.error);
       return;
     }
 
     setState(() => _isChangingPassword = true);
 
     try {
-      final user = FirebaseAuth.instance.currentUser!;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null || user.email == null) {
+        if (mounted) {
+          AppToast.show(context, message: 'Please sign in again to change your password', type: ToastType.error);
+        }
+        if (mounted) setState(() => _isChangingPassword = false);
+        return;
+      }
       final credential = EmailAuthProvider.credential(
         email: user.email!,
         password: currentPassword,
@@ -135,25 +253,65 @@ class _ProfilePageState extends State<ProfilePage> {
       _newPasswordController.clear();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password changed successfully'),
-            backgroundColor: AppColors.primaryGreen,
-          ),
-        );
+        AppToast.show(context, message: 'Password changed successfully');
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message ?? 'Failed to change password'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        String message;
+        switch (e.code) {
+          case 'wrong-password':
+            message = 'Current password is incorrect';
+            break;
+          case 'weak-password':
+            message = 'New password is too weak';
+            break;
+          case 'requires-recent-login':
+            message = 'Please sign out and sign in again first';
+            break;
+          default:
+            message = 'Failed to change password';
+        }
+        AppToast.show(context, message: message, type: ToastType.error);
       }
     }
 
     if (mounted) setState(() => _isChangingPassword = false);
+  }
+
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Log Out',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: context.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              context.read<AuthBloc>().add(LogoutRequested());
+            },
+            child: const Text(
+              'Yes, Logout',
+              style: TextStyle(
+                color: AppColors.error,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -165,82 +323,180 @@ class _ProfilePageState extends State<ProfilePage> {
     final email = user?.email ?? '';
     final initials = name
         .split(RegExp(r'\s+|@'))
-        .where((part) => part.isNotEmpty)
+        .where((p) => p.isNotEmpty)
         .take(2)
-        .map((part) => part[0].toUpperCase())
+        .map((p) => p[0].toUpperCase())
         .join();
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) {
+        if (state is Unauthenticated || state is AccountDeleted) {
+          context.go(AppRoutes.login);
+        }
+      },
+      child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        elevation: 0,
-        title: Text(
-          'Profile',
-          style: AppTypography.headlineSmall.copyWith(
-            color: context.textPrimary,
+        appBar: AppBar(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          elevation: 0,
+          title: AutoSizeText(
+            'Settings',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: context.textPrimary,
+            ),
+            maxLines: 1,
           ),
+          centerTitle: false,
+          iconTheme: IconThemeData(color: context.textPrimary),
         ),
-        centerTitle: false,
-        iconTheme: IconThemeData(color: context.textPrimary),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          children: [
-            _buildProfileHeader(context, name, email, initials),
-            const SizedBox(height: AppSpacing.xl),
-            _buildShippingAddressSection(context),
-            const SizedBox(height: AppSpacing.xl),
-            _buildChangePasswordSection(context),
-            const SizedBox(height: AppSpacing.xxxl),
-            _buildLogoutButton(context),
-            const SizedBox(height: AppSpacing.xl),
-          ],
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+          child: Column(
+            children: [
+              _buildProfileHeader(name, email, initials),
+              const SizedBox(height: 24),
+              if (_editingProfile) ...[
+                _buildEditProfileSection(),
+                const SizedBox(height: 20),
+              ],
+              _buildMenuSection(),
+              const SizedBox(height: 20),
+              _buildAccountManagementSection(),
+              const SizedBox(height: 20),
+              _buildEscalationContactsSection(),
+              const SizedBox(height: 20),
+              _buildPasswordSection(),
+              const SizedBox(height: 20),
+              _buildAboutSection(),
+              const SizedBox(height: 20),
+              if (email == 'devanurag96@gmail.com' || email == 'mike@rdfresh.com')
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: _buildAdminSection(),
+                ),
+              _buildLegalSection(),
+              const SizedBox(height: 28),
+              _buildLogoutButton(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildProfileHeader(
-    BuildContext context,
-    String name,
-    String email,
-    String initials,
-  ) {
+  Widget _buildProfileHeader(String name, String email, String initials) {
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.xxl),
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: context.cardColor,
-        borderRadius: AppRadius.baseBr,
-        border: Border.all(color: context.borderColor),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: context.borderColor.withValues(alpha: 0.3)),
         boxShadow: context.cardShadow,
       ),
       child: Column(
         children: [
-          CircleAvatar(
-            radius: 40,
-            backgroundColor: AppColors.primaryGreen.withValues(alpha: 0.1),
-            child: Text(
-              initials.isEmpty ? 'RD' : initials,
-              style: AppTypography.headlineMedium.copyWith(
-                color: AppColors.primaryGreen,
-                fontWeight: FontWeight.w700,
-              ),
+          GestureDetector(
+            onTap: () {},
+            child: Stack(
+              children: [
+                CircleAvatar(
+                  radius: 40,
+                  backgroundColor:
+                      AppColors.primaryGreen.withValues(alpha: 0.1),
+                  child: AutoSizeText(
+                    initials.isEmpty ? 'RD' : initials,
+                    style: const TextStyle(
+                      color: AppColors.primaryGreen,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 24,
+                    ),
+                    maxLines: 1,
+                    minFontSize: 14,
+                  ),
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: AppColors.primaryGreen,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.camera_alt_rounded,
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: AppSpacing.base),
-          Text(
+          const SizedBox(height: 14),
+          AutoSizeText(
             name,
-            style: AppTypography.headlineSmall.copyWith(
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
               color: context.textPrimary,
             ),
+            maxLines: 1,
+            minFontSize: 14,
           ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
+          const SizedBox(height: 2),
+          AutoSizeText(
             email,
-            style: AppTypography.bodyMedium.copyWith(
+            style: TextStyle(
+              fontSize: 14,
               color: context.textSecondary,
+            ),
+            maxLines: 1,
+            minFontSize: 10,
+          ),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: AutoSizeText(
+              'Business Account',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primaryGreen,
+              ),
+              maxLines: 1,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: OutlinedButton(
+              onPressed: () => setState(() => _editingProfile = !_editingProfile),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.primaryGreen),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                minimumSize: Size.zero,
+              ),
+              child: AutoSizeText(
+                _editingProfile ? 'Cancel Editing' : 'Edit Profile',
+                style: const TextStyle(
+                  color: AppColors.primaryGreen,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+              ),
             ),
           ),
         ],
@@ -248,47 +504,52 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildShippingAddressSection(BuildContext context) {
+  Widget _buildEditProfileSection() {
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.xxl),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: context.cardColor,
-        borderRadius: AppRadius.baseBr,
-        border: Border.all(color: context.borderColor),
-        boxShadow: context.cardShadow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.borderColor.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          AutoSizeText(
             'Shipping Address',
-            style: AppTypography.headlineMedium.copyWith(
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
               color: context.textPrimary,
             ),
+            maxLines: 1,
           ),
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: 16),
           if (_isLoadingAddress)
             const Center(child: CircularProgressIndicator())
           else ...[
             _buildField('Address', _addressController),
-            const SizedBox(height: AppSpacing.base),
+            const SizedBox(height: 12),
             _buildField('City', _cityController),
-            const SizedBox(height: AppSpacing.base),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(child: _buildField('State', _stateController)),
-                const SizedBox(width: AppSpacing.base),
+                const SizedBox(width: 12),
                 Expanded(child: _buildField('ZIP', _zipController)),
               ],
             ),
-            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(height: 12),
+            _buildField('Phone', _phoneController),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               height: 48,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: AppColors.primaryGradient,
-                  borderRadius: AppRadius.mdBr,
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: ElevatedButton(
                   onPressed: _isSavingAddress ? null : _saveShippingAddress,
@@ -297,7 +558,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     shadowColor: Colors.transparent,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius: AppRadius.mdBr,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   child: _isSavingAddress
@@ -309,11 +570,13 @@ class _ProfilePageState extends State<ProfilePage> {
                             color: Colors.white,
                           ),
                         )
-                      : Text(
-                          'SAVE ADDRESS',
-                          style: AppTypography.button.copyWith(
-                            color: Colors.white,
+                      : const AutoSizeText(
+                          'Save Changes',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
                           ),
+                          maxLines: 1,
                         ),
                 ),
               ),
@@ -324,47 +587,218 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildChangePasswordSection(BuildContext context) {
+  Widget _buildMenuSection() {
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.xxl),
       decoration: BoxDecoration(
         color: context.cardColor,
-        borderRadius: AppRadius.baseBr,
-        border: Border.all(color: context.borderColor),
-        boxShadow: context.cardShadow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.borderColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          _MenuTile(
+            icon: Icons.receipt_long_rounded,
+            label: 'My Orders',
+            onTap: () => context.push(AppRoutes.activeOrders),
+          ),
+          Divider(height: 1, color: context.borderColor.withValues(alpha: 0.3)),
+          _MenuTile(
+            icon: Icons.notifications_rounded,
+            label: 'Notifications',
+            onTap: () => context.push('/notifications'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEscalationContactsSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.borderColor.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AutoSizeText(
+                      'Escalation Contacts',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: context.textPrimary,
+                      ),
+                      maxLines: 1,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Notified if bags aren\'t changed within 5 days',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_designatedContacts.length < 5)
+                GestureDetector(
+                  onTap: _showAddContactDialog,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryGreen.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.add,
+                        color: AppColors.primaryGreen, size: 20),
+                  ),
+                ),
+            ],
+          ),
+          if (_isLoadingContacts)
+            const Padding(
+              padding: EdgeInsets.only(top: 16),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppColors.primaryGreen),
+                ),
+              ),
+            )
+          else if (_designatedContacts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.group_add_rounded,
+                        color: context.textTertiary, size: 32),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No contacts added yet',
+                      style: TextStyle(
+                          fontSize: 13, color: context.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ...List.generate(_designatedContacts.length, (i) {
+              final contact = _designatedContacts[i];
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: context.inputFillColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor:
+                            AppColors.primaryGreen.withValues(alpha: 0.1),
+                        child: Text(
+                          contact.name.isNotEmpty
+                              ? contact.name[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            color: AppColors.primaryGreen,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              contact.name,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: context.textPrimary,
+                              ),
+                            ),
+                            Text(
+                              contact.email,
+                              style: TextStyle(
+                                  fontSize: 12, color: context.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => _removeContact(i),
+                        child: Icon(Icons.close_rounded,
+                            color: context.textTertiary, size: 20),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPasswordSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.borderColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AutoSizeText(
             'Change Password',
-            style: AppTypography.headlineMedium.copyWith(
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
               color: context.textPrimary,
             ),
+            maxLines: 1,
           ),
-          const SizedBox(height: AppSpacing.xl),
-          _buildField(
-            'Current Password',
-            _currentPasswordController,
-            obscure: true,
-          ),
-          const SizedBox(height: AppSpacing.base),
-          _buildField(
-            'New Password',
-            _newPasswordController,
-            obscure: true,
-          ),
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: 16),
+          _buildField('Current Password', _currentPasswordController,
+              obscure: true),
+          const SizedBox(height: 12),
+          _buildField('New Password', _newPasswordController, obscure: true),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
-            height: 48,
+            height: 44,
             child: OutlinedButton(
               onPressed: _isChangingPassword ? null : _changePassword,
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: AppColors.primaryGreen),
                 shape: RoundedRectangleBorder(
-                  borderRadius: AppRadius.mdBr,
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                minimumSize: Size.zero,
               ),
               child: _isChangingPassword
                   ? const SizedBox(
@@ -375,11 +809,14 @@ class _ProfilePageState extends State<ProfilePage> {
                         color: AppColors.primaryGreen,
                       ),
                     )
-                  : Text(
-                      'UPDATE PASSWORD',
-                      style: AppTypography.button.copyWith(
+                  : const AutoSizeText(
+                      'Update Password',
+                      style: TextStyle(
                         color: AppColors.primaryGreen,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
+                      maxLines: 1,
                     ),
             ),
           ),
@@ -388,24 +825,280 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildLogoutButton(BuildContext context) {
+  Widget _buildAboutSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.borderColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AutoSizeText(
+            'About RD Fresh',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: context.textPrimary,
+            ),
+            maxLines: 1,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'RD Fresh provides natural zeolite mineral packs for commercial refrigeration. '
+            'Our FDA-approved technology absorbs ethylene gas, extending food shelf life by up to 50% '
+            'in walk-in coolers, produce drawers, and prep stations.',
+            style: TextStyle(
+              fontSize: 13,
+              color: context.textSecondary,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.warningBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AutoSizeText(
+            'Admin Tools',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: context.textPrimary,
+            ),
+            maxLines: 1,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: OutlinedButton.icon(
+              onPressed: _runUserMigration,
+              icon: const Icon(Icons.sync_rounded,
+                  color: AppColors.warning, size: 18),
+              label: const Text('Migrate Users to Firebase Auth'),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.warning),
+                foregroundColor: AppColors.warning,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runUserMigration() async {
+    AppToast.show(context, message: 'Running migration...', type: ToastType.info);
+    try {
+      final callable = FirebaseFunctions.instance
+          .httpsCallable('migrateUsersToFirebaseAuth');
+      final result = await callable.call();
+      final data = result.data as Map<String, dynamic>;
+      final results = (data['results'] as List?) ?? [];
+      final created =
+          results.where((r) => r['status'] == 'created').length;
+      final existing =
+          results.where((r) => r['status'] == 'already_exists').length;
+
+      if (mounted) {
+        AppToast.show(context,
+            message:
+                'Migration done: $created created, $existing already existed');
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.show(context,
+            message: 'Migration failed: $e', type: ToastType.error);
+      }
+    }
+  }
+
+  Widget _buildLogoutButton() {
     return SizedBox(
       width: double.infinity,
       height: 48,
-      child: OutlinedButton.icon(
-        onPressed: () {
-          context.read<AuthBloc>().add(LogoutRequested());
+      child: TextButton(
+        onPressed: _showLogoutDialog,
+        child: const AutoSizeText(
+          'Log Out',
+          style: TextStyle(
+            color: AppColors.error,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+          maxLines: 1,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLegalSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.borderColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          _MenuTile(
+            icon: Icons.privacy_tip_rounded,
+            label: 'Privacy Policy',
+            onTap: () => context.push(AppRoutes.privacyPolicy),
+          ),
+          Divider(height: 1, color: context.borderColor.withValues(alpha: 0.3)),
+          _MenuTile(
+            icon: Icons.description_rounded,
+            label: 'Terms of Service',
+            onTap: () => context.push(AppRoutes.termsOfService),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountManagementSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: AutoSizeText(
+            'Account Management',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: context.textPrimary,
+            ),
+            maxLines: 1,
+          ),
+        ),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _showDeleteAccountDialog,
+            icon: const Icon(Icons.delete_forever_rounded, size: 22),
+            label: const Text(
+              'Delete Account',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade600,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showDeleteAccountDialog() {
+    final passwordController = TextEditingController();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => BlocConsumer<AuthBloc, AuthState>(
+        listener: (ctx, state) {
+          if (state is AccountDeleted) {
+            Navigator.of(ctx).pop();
+            GoRouter.of(context).go(AppRoutes.login);
+          }
+          if (state is AuthError) {
+            AppToast.show(context, message: state.message, type: ToastType.error);
+          }
         },
-        icon: const Icon(Icons.logout_rounded),
-        label: Text(
-          'LOG OUT',
-          style: AppTypography.button.copyWith(color: AppColors.error),
-        ),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.error,
-          side: const BorderSide(color: AppColors.error),
-          shape: RoundedRectangleBorder(borderRadius: AppRadius.mdBr),
-        ),
+        builder: (ctx, state) {
+          final isLoading = state is AuthLoading;
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text(
+              'Delete Account',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'This will permanently delete your account and all associated data. This action cannot be undone.',
+                  style: TextStyle(color: Colors.red),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  enabled: !isLoading,
+                  decoration: InputDecoration(
+                    labelText: 'Enter your password to confirm',
+                    hintText: 'Password',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.of(ctx).pop(),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(color: context.textSecondary),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade600,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: isLoading
+                    ? null
+                    : () {
+                        final password = passwordController.text.trim();
+                        if (password.isEmpty) {
+                          AppToast.show(context, message: 'Please enter your password', type: ToastType.error);
+                          return;
+                        }
+                        context.read<AuthBloc>().add(DeleteAccountRequested(password: password));
+                      },
+                child: isLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Delete My Account', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -420,21 +1113,64 @@ class _ProfilePageState extends State<ProfilePage> {
       children: [
         Text(
           label,
-          style: AppTypography.labelMedium.copyWith(
-            color: context.textPrimary,
+          style: TextStyle(
+            fontSize: 12,
             fontWeight: FontWeight.w600,
+            color: context.textSecondary,
           ),
         ),
-        const SizedBox(height: AppSpacing.sm),
+        const SizedBox(height: 6),
         TextField(
           controller: controller,
           obscureText: obscure,
           decoration: InputDecoration(
-            constraints: const BoxConstraints(minHeight: 48),
+            constraints: const BoxConstraints(minHeight: 44),
             hintText: label,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MenuTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _MenuTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppColors.primaryGreen.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: AppColors.primaryGreen, size: 20),
+      ),
+      title: AutoSizeText(
+        label,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          color: context.textPrimary,
+        ),
+        maxLines: 1,
+      ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: context.textTertiary,
+      ),
+      onTap: onTap,
     );
   }
 }

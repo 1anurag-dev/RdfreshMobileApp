@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../domain/entities/order_entity.dart';
 import '../../domain/usecases/complete_order_usecase.dart';
 import '../../domain/usecases/get_active_orders_usecase.dart';
 import 'order_event.dart';
@@ -27,13 +27,13 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
   ) async {
     final currentUser = firebaseAuth.currentUser;
     if (currentUser == null) {
-      emit(const OrderError('No authenticated user found'));
+      emit(const OrderError('Please sign in to view your orders'));
       return;
     }
 
     final userEmail = currentUser.email;
     if (userEmail == null) {
-      emit(const OrderError('User email not available'));
+      emit(const OrderError('Unable to load orders. Please sign in again.'));
       return;
     }
 
@@ -48,11 +48,12 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
           return ActiveOrdersLoaded(orders);
         },
         onError: (error, _) {
-          return OrderError(error.toString());
+          return const OrderError('Unable to load orders. Please try again.');
         },
       );
     } catch (e) {
-      emit(OrderError(e.toString()));
+      if (kDebugMode) debugPrint('[OrderBloc] Error loading orders: $e');
+      emit(const OrderError('Unable to load orders. Please check your connection.'));
     }
   }
 
@@ -64,7 +65,7 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
     try {
       final currentUser = firebaseAuth.currentUser;
       if (currentUser?.email == null) {
-        emit(const OrderError('User email not available'));
+        emit(const OrderError('Please sign in to view order details'));
         return;
       }
 
@@ -78,7 +79,8 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
         break;
       }
     } catch (e) {
-      emit(OrderError(e.toString()));
+      if (kDebugMode) debugPrint('[OrderBloc] Error loading order details: $e');
+      emit(const OrderError('Unable to load order details. Please try again.'));
     }
   }
 
@@ -103,7 +105,7 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
 
         final completedOrder = await result.fold(
           (error) async {
-            emit(OrderError(error));
+            emit(const OrderError('Unable to complete delivery. Please try again.'));
             return null;
           },
           (order) async {
@@ -115,7 +117,8 @@ class OrderBloc extends Bloc<OrderEvent, OrderState> {
           emit(OrderCompleted(completedOrder));
         }
       } catch (e) {
-        emit(OrderError(e.toString()));
+        if (kDebugMode) debugPrint('[OrderBloc] Error completing order: $e');
+        emit(const OrderError('Unable to complete delivery. Please try again.'));
       }
     }
   }

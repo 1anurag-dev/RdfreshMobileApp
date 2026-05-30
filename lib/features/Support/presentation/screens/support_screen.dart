@@ -25,19 +25,24 @@ class SupportScreen extends StatelessWidget {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showSupportBottomSheet(context),
-        backgroundColor: AppColors.primaryGreen,
-        child: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).padding.bottom + 80,
+        ),
+        child: FloatingActionButton(
+          onPressed: () => _showSupportBottomSheet(context),
+          backgroundColor: AppColors.primaryGreen,
+          child: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        child: const Column(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(height: AppSpacing.md),
-            NeedHelpCard(),
-            SizedBox(height: AppSpacing.xxxl),
+            const SizedBox(height: AppSpacing.md),
+            const NeedHelpCard(),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 100),
           ],
         ),
       ),
@@ -91,7 +96,7 @@ class SupportScreen extends StatelessWidget {
                   }
                 },
               ),
-              const SizedBox(height: AppSpacing.lg),
+              SizedBox(height: MediaQuery.of(context).padding.bottom + AppSpacing.lg),
             ],
           ),
         );

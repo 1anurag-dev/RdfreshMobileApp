@@ -172,6 +172,7 @@ class _DeliveryConfirmationScreenState
                       borderRadius: AppRadius.mdBr,
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 12),
+                    minimumSize: Size.zero,
                   ),
                 ),
               ),

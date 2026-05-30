@@ -28,10 +28,13 @@ class ActiveOrderCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Order $orderId",
-                style: AppTypography.headlineSmall.copyWith(
-                  color: context.textPrimary,
+              Flexible(
+                child: Text(
+                  "Order $orderId",
+                  style: AppTypography.headlineSmall.copyWith(
+                    color: context.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               if (needsSignature) AppBadge.error("Signature Required"),

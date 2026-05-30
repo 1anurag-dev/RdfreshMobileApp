@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_components.dart';
+import '../../../../core/widgets/app_toast.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
@@ -16,6 +17,15 @@ class DownloadsPage extends StatefulWidget {
 
 class _DownloadsPageState extends State<DownloadsPage>
     with SingleTickerProviderStateMixin {
+  static const _allowedDomains = [
+    'firebasestorage.googleapis.com',
+    'storage.googleapis.com',
+  ];
+
+  static bool _isAllowedDomain(String host) {
+    return _allowedDomains.any((d) => host == d || host.endsWith('.$d'));
+  }
+
   TabController? _tabController;
   List<Map<String, dynamic>> _sections = [];
   bool _isLoading = true;
@@ -73,36 +83,21 @@ class _DownloadsPageState extends State<DownloadsPage>
 
     if (url == null || url.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Document link is missing'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        AppToast.show(context, message: 'Document link is missing', type: ToastType.error);
       }
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 15),
-            Expanded(child: Text('Downloading $fileName...')),
-          ],
-        ),
-        backgroundColor: AppColors.primaryGreen,
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    // Validate URL scheme and domain allowlist
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https' || !_isAllowedDomain(uri.host)) {
+      if (mounted) {
+        AppToast.show(context, message: 'Invalid document URL', type: ToastType.error);
+      }
+      return;
+    }
+
+    AppToast.show(context, message: 'Downloading $fileName...', type: ToastType.info);
 
     try {
       final response = await http.get(Uri.parse(url));
@@ -114,33 +109,16 @@ class _DownloadsPageState extends State<DownloadsPage>
 
         final result = await OpenFilex.open(tempFile.path);
         if (result.type != ResultType.done && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Could not open file: ${result.message}'),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          AppToast.show(context, message: 'Could not open file: ${result.message}', type: ToastType.error);
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Failed to download file. Error code: ${response.statusCode}',
-              ),
-              backgroundColor: AppColors.error,
-            ),
-          );
+          AppToast.show(context, message: 'Failed to download file', type: ToastType.error);
         }
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Error occurred while opening the document'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        AppToast.show(context, message: 'Error occurred while opening the document', type: ToastType.error);
       }
     }
   }
@@ -212,7 +190,7 @@ class _DownloadsPageState extends State<DownloadsPage>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
       itemCount: docs.length,
       itemBuilder: (context, index) => _buildRemoteFileTile(docs[index]),
     );

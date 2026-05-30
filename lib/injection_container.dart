@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:get_it/get_it.dart';
@@ -46,8 +47,6 @@ import 'features/orders/data/datasources/order_remote_data_source.dart'
     as checkout_ds;
 import 'features/orders/data/repositories/order_repository_impl.dart'
     as checkout_repo_impl;
-import 'features/orders/data/services/quickbooks_service.dart';
-import 'features/orders/data/services/shipstation_service.dart';
 import 'features/orders/domain/repositories/order_repository.dart'
     as checkout_repo;
 import 'features/orders/domain/usecases/create_order.dart';
@@ -66,6 +65,8 @@ Future<void> init() async {
   sl.registerLazySingleton<FirebaseFirestore>(() => FirebaseFirestore.instance);
 
   sl.registerLazySingleton<FirebaseMessaging>(() => FirebaseMessaging.instance);
+
+  sl.registerLazySingleton<FirebaseFunctions>(() => FirebaseFunctions.instance);
 
   // =========================
   // Notification Service
@@ -237,23 +238,14 @@ Future<void> init() async {
   );
 
   // =========================
-  // Orders - Services
-  // =========================
-  sl.registerLazySingleton<QuickBooksService>(
-    () => QuickBooksService(firestore: sl()),
-  );
-  sl.registerLazySingleton<ShipStationService>(
-    () => ShipStationService(firestore: sl()),
-  );
-
-  // =========================
   // Orders - Data Sources
   // =========================
+  // Order creation goes through Cloud Functions (server-side)
+  // QuickBooks and ShipStation credentials never reach the mobile client
   sl.registerLazySingleton<checkout_ds.CheckoutOrderRemoteDataSource>(
     () => checkout_ds.CheckoutOrderRemoteDataSourceImpl(
       firestore: sl(),
-      quickBooksService: sl(),
-      shipStationService: sl(),
+      functions: sl(),
     ),
   );
 

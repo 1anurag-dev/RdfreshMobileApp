@@ -14,7 +14,7 @@ class ChecklistItem extends StatelessWidget {
         children: [
           const Icon(Icons.check_circle, color: AppColors.primaryGreen, size: 22),
           const SizedBox(width: 12),
-          Text(label, style: const TextStyle(fontSize: 15, color: AppColors.primaryNavy)),
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 15, color: AppColors.primaryNavy))),
         ],
       ),
     );

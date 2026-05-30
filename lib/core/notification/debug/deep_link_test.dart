@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -42,7 +43,9 @@ class NotificationDeepLinkTest extends StatelessWidget {
 
   void _testDeepLink(BuildContext context, String orderId) {
     // Simulate the exact same logic as notification tap
-    debugPrint('[Test] Simulating notification tap for order: $orderId');
+    if (kDebugMode) {
+      debugPrint('[Test] Simulating notification tap for order: $orderId');
+    }
     
     // This is exactly what happens when you tap a notification
     context.go('/orders/$orderId');

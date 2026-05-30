@@ -8,6 +8,7 @@ class Product extends Equatable {
   final String sku;
   final String imageUrl;
   final bool isAvailable;
+  final String category;
 
   const Product({
     required this.id,
@@ -17,6 +18,7 @@ class Product extends Equatable {
     required this.sku,
     required this.imageUrl,
     this.isAvailable = true,
+    this.category = '',
   });
 
   @override
@@ -28,5 +30,6 @@ class Product extends Equatable {
     sku,
     imageUrl,
     isAvailable,
+    category,
   ];
 }

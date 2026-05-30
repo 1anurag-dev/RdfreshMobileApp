@@ -15,7 +15,10 @@ import 'features/auth/presentation/bloc/auth_event.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set system UI overlay style
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
@@ -37,9 +40,9 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   final NotificationManager _notificationManager = NotificationManager();
   final SecureNotificationService _secureNotificationService =
-      SecureNotificationService();
+      di.sl<SecureNotificationService>();
   final EnhancedNotificationService _enhancedNotificationService =
-      EnhancedNotificationService();
+      di.sl<EnhancedNotificationService>();
 
   @override
   void initState() {

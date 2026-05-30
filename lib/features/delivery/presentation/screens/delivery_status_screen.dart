@@ -169,6 +169,7 @@ class _DeliveryStatusScreenState extends State<DeliveryStatusScreen>
                         onRatingChanged: _onRatingChanged,
                         onCompleteDelivery: () => _onCompleteDelivery(context),
                         isLoading: state is OrderCompletionLoading,
+                        orderId: widget.orderId,
                       ),
                     ),
                   );
@@ -266,6 +267,7 @@ class DeliveryStatusBody extends StatelessWidget {
   final Function(int) onRatingChanged;
   final VoidCallback onCompleteDelivery;
   final bool isLoading;
+  final String orderId;
 
   const DeliveryStatusBody({
     super.key,
@@ -278,6 +280,7 @@ class DeliveryStatusBody extends StatelessWidget {
     required this.onRatingChanged,
     required this.onCompleteDelivery,
     required this.isLoading,
+    required this.orderId,
   });
 
   @override
@@ -300,6 +303,68 @@ class DeliveryStatusBody extends StatelessWidget {
             child: StatusCard(status: order.status),
           ),
           const SizedBox(height: AppSpacing.xl),
+
+          if (order.isDelivered && order.signatureStatus != 'signed')
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+              child: GestureDetector(
+                onTap: () => context.push('${AppRoutes.bagChange}/$orderId'),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.08),
+                    borderRadius: AppRadius.mdBr,
+                    border: Border.all(
+                      color: AppColors.warning.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.swap_horiz_rounded,
+                          color: AppColors.warning,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Confirm Bag Change',
+                              style: AppTypography.titleMedium.copyWith(
+                                color: context.textPrimary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Tap to sign and confirm bag installation',
+                              style: AppTypography.caption.copyWith(
+                                color: context.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: context.textTertiary,
+                        size: 22,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           _buildSection(
             context,

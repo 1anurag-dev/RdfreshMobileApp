@@ -8,7 +8,6 @@ export 'app_typography.dart';
 // Legacy aliases for backward compatibility (old screens that reference AppColors.primaryNavy etc.)
 import 'package:flutter/material.dart';
 import 'app_colors.dart' as nc;
-import 'app_theme_new.dart';
 
 /// @deprecated Use AppColors from app_colors.dart directly
 /// This keeps old code working during migration.

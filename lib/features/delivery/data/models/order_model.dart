@@ -15,57 +15,82 @@ class OrderModel extends OrderEntity {
     required super.customerUsername,
     required super.orderDate,
     required super.createdAt,
+    super.signedAt,
+    super.deliveredAt,
+    super.bagChangeDeadline,
+    super.remindersSent,
+    super.lastReminderSentAt,
+    super.escalated,
+    super.escalatedAt,
   });
+
+  static Map<String, dynamic>? _toStringDynamicMap(dynamic value) {
+    if (value == null) return null;
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
 
   factory OrderModel.fromFirestore(
     Map<String, dynamic> data,
     String documentId,
   ) {
-    final shipToData = data['shipTo'] as Map<String, dynamic>? ?? {};
-    final timestamp = data['createdAt'] as Timestamp?;
+    final shipToData = _toStringDynamicMap(data['shipTo']);
+    final billingInfo = _toStringDynamicMap(data['billingInfo']);
+    final addressSource = shipToData ?? billingInfo;
+
+    String createdAtStr;
+    final rawCreatedAt = data['createdAt'];
+    if (rawCreatedAt is Timestamp) {
+      createdAtStr = rawCreatedAt.toDate().toIso8601String();
+    } else if (rawCreatedAt is String) {
+      createdAtStr = rawCreatedAt;
+    } else {
+      createdAtStr = DateTime.now().toIso8601String();
+    }
+
+    final customerName = addressSource != null
+        ? '${addressSource['firstName'] ?? addressSource['name'] ?? ''} ${addressSource['lastName'] ?? ''}'.trim()
+        : '';
 
     return OrderModel(
-      orderId: data['orderId'] ?? documentId,
-      status: data['status'] as String? ?? 'pending',
-      totalAmount: data['total_amount'] as num? ?? 0,
+      orderId: (data['orderId'] ?? data['id'] ?? documentId).toString(),
+      status: (data['status'] ?? 'pending').toString(),
+      totalAmount: (data['total_amount'] ?? data['total'] ?? 0) as num,
       shipTo: ShipToAddress(
-        name: shipToData['name'] as String? ?? '',
-        city: shipToData['city'] as String? ?? '',
-        state: shipToData['state'] as String? ?? '',
-        street1: shipToData['street1'] as String? ?? '',
-        phone: shipToData['phone'] as String? ?? '',
+        name: (addressSource?['name'] ?? customerName).toString(),
+        city: (addressSource?['city'] ?? '').toString(),
+        state: (addressSource?['state'] ?? '').toString(),
+        street1: (addressSource?['street1'] ?? addressSource?['address'] ?? '').toString(),
+        phone: (addressSource?['phone'] ?? '').toString(),
       ),
-      signature: data['signature'] as String?,
-      signatureStatus: data['signatureStatus'] as String?,
-      rating: data['rating'] as int?,
+      signature: data['signature']?.toString(),
+      signatureStatus: data['signatureStatus']?.toString(),
+      rating: data['rating'] is int ? data['rating'] as int : null,
       feedback: _parseFeedback(data['feedback']),
-      customerEmail: data['customerEmail'] as String? ?? '',
-      customerUsername: data['customerUsername'] as String? ?? '',
-      orderDate: data['orderDate'] as String? ?? '',
-      createdAt:
-          timestamp?.toDate().toIso8601String() ??
-          DateTime.now().toIso8601String(),
+      customerEmail: (data['customerEmail'] ?? '').toString(),
+      customerUsername: (data['customerUsername'] ?? customerName).toString(),
+      orderDate: (data['orderDate'] ?? createdAtStr).toString(),
+      createdAt: createdAtStr,
+      signedAt: data['signedAt']?.toString(),
+      deliveredAt: data['deliveredAt']?.toString(),
+      bagChangeDeadline: data['bagChangeDeadline']?.toString(),
+      remindersSent: (data['remindersSent'] as int?) ?? 0,
+      lastReminderSentAt: data['lastReminderSentAt']?.toString(),
+      escalated: (data['escalated'] as bool?) ?? false,
+      escalatedAt: data['escalatedAt']?.toString(),
     );
   }
 
   // Helper method to parse feedback from both old (String) and new (Map) formats
   static Map<String, dynamic>? _parseFeedback(dynamic feedbackData) {
     if (feedbackData == null) return null;
-
-    if (feedbackData is Map<String, dynamic>) {
-      // New format: already a map with 'stars' and 'text'
-      return feedbackData;
+    if (feedbackData is Map) {
+      return Map<String, dynamic>.from(feedbackData);
     }
-
     if (feedbackData is String) {
-      // Old format: just a string, convert to new map format
-      return {
-        'stars': null, // No rating in old format
-        'text': feedbackData,
-      };
+      return {'stars': null, 'text': feedbackData};
     }
-
-    // Unknown format, return null
     return null;
   }
 
@@ -91,10 +116,16 @@ class OrderModel extends OrderEntity {
       'createdAt': Timestamp.fromMillisecondsSinceEpoch(
         DateTime.parse(createdAt).millisecondsSinceEpoch,
       ),
+      'signedAt': signedAt,
+      'deliveredAt': deliveredAt,
+      'bagChangeDeadline': bagChangeDeadline,
+      'remindersSent': remindersSent,
+      'lastReminderSentAt': lastReminderSentAt,
+      'escalated': escalated,
+      'escalatedAt': escalatedAt,
     };
   }
 
-  // Add toEntity method
   OrderEntity toEntity() {
     return OrderEntity(
       orderId: orderId,
@@ -109,6 +140,13 @@ class OrderModel extends OrderEntity {
       customerUsername: customerUsername,
       orderDate: orderDate,
       createdAt: createdAt,
+      signedAt: signedAt,
+      deliveredAt: deliveredAt,
+      bagChangeDeadline: bagChangeDeadline,
+      remindersSent: remindersSent,
+      lastReminderSentAt: lastReminderSentAt,
+      escalated: escalated,
+      escalatedAt: escalatedAt,
     );
   }
 
@@ -118,6 +156,11 @@ class OrderModel extends OrderEntity {
     String? signatureStatus,
     int? rating,
     Map<String, dynamic>? feedback,
+    String? signedAt,
+    String? deliveredAt,
+    String? bagChangeDeadline,
+    int? remindersSent,
+    bool? escalated,
   }) {
     return OrderModel(
       orderId: orderId,
@@ -132,6 +175,13 @@ class OrderModel extends OrderEntity {
       customerUsername: customerUsername,
       orderDate: orderDate,
       createdAt: createdAt,
+      signedAt: signedAt ?? this.signedAt,
+      deliveredAt: deliveredAt ?? this.deliveredAt,
+      bagChangeDeadline: bagChangeDeadline ?? this.bagChangeDeadline,
+      remindersSent: remindersSent ?? this.remindersSent,
+      lastReminderSentAt: lastReminderSentAt,
+      escalated: escalated ?? this.escalated,
+      escalatedAt: escalatedAt,
     );
   }
 }

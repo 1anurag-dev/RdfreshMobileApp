@@ -22,7 +22,7 @@ class CartRepositoryImpl implements CartRepository {
       await remoteDataSource.addToCart(userId, CartItemModel.fromEntity(item));
       return const Right(null);
     } catch (e) {
-      return Left(e.toString());
+      return const Left('Unable to add item to cart. Please try again.');
     }
   }
 
@@ -40,7 +40,7 @@ class CartRepositoryImpl implements CartRepository {
       );
       return const Right(null);
     } catch (e) {
-      return Left(e.toString());
+      return const Left('Unable to update cart. Please try again.');
     }
   }
 
@@ -53,7 +53,7 @@ class CartRepositoryImpl implements CartRepository {
       await remoteDataSource.removeFromCart(userId, productId);
       return const Right(null);
     } catch (e) {
-      return Left(e.toString());
+      return const Left('Unable to remove item from cart. Please try again.');
     }
   }
 
@@ -63,7 +63,7 @@ class CartRepositoryImpl implements CartRepository {
       await remoteDataSource.clearCart(userId);
       return const Right(null);
     } catch (e) {
-      return Left(e.toString());
+      return const Left('Unable to clear cart. Please try again.');
     }
   }
 }

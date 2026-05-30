@@ -3,7 +3,6 @@ import '../../../../core/error/exceptions.dart';
 import '../../domain/entities/order_entity.dart';
 import '../../domain/repositories/order_repository.dart';
 import '../datasources/order_remote_data_source.dart';
-import '../models/order_model.dart';
 
 class OrderRepositoryImpl implements OrderRepository {
   final OrderRemoteDataSource remoteDataSource;
@@ -42,7 +41,7 @@ class OrderRepositoryImpl implements OrderRepository {
     } on AuthException catch (e) {
       return Left(e.message);
     } catch (e) {
-      return Left(e.toString());
+      return const Left('Unable to complete order. Please try again.');
     }
   }
 }

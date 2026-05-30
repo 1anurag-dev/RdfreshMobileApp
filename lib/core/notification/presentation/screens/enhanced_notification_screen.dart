@@ -7,6 +7,7 @@ import '../../data/services/notification_inbox_service.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_components.dart';
+import '../../../../core/widgets/app_toast.dart';
 
 class EnhancedNotificationScreen extends StatefulWidget {
   const EnhancedNotificationScreen({super.key});
@@ -66,23 +67,12 @@ class _EnhancedNotificationScreenState
     try {
       await _inboxService.deleteNotification(notificationId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Notification deleted'),
-            backgroundColor: AppColors.primaryGreen,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        AppToast.show(context, message: 'Notification deleted');
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Failed to delete notification'),
-            backgroundColor: AppColors.error,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        AppToast.show(context,
+            message: 'Failed to delete notification', type: ToastType.error);
       }
     }
   }
@@ -133,13 +123,7 @@ class _EnhancedNotificationScreenState
       try {
         await _inboxService.deleteAllNotifications();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('All notifications cleared'),
-              backgroundColor: AppColors.primaryGreen,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          AppToast.show(context, message: 'All notifications cleared');
         }
       } catch (_) {
       } finally {
@@ -201,21 +185,21 @@ class _EnhancedNotificationScreenState
       case 'promotion':
         return AppColors.warning;
       default:
-        return AppColors.lightTextSecondary;
+        return context.textSecondary;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.lightBg,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.lightBg,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.arrow_back_ios_rounded,
-            color: AppColors.secondary,
+            color: context.textPrimary,
           ),
           onPressed: () {
             if (context.canPop()) {
@@ -228,7 +212,7 @@ class _EnhancedNotificationScreenState
         title: Text(
           'Notifications',
           style: AppTypography.headlineSmall.copyWith(
-            color: AppColors.secondary,
+            color: context.textPrimary,
           ),
         ),
         centerTitle: false,
@@ -253,9 +237,9 @@ class _EnhancedNotificationScreenState
             )
           else
             PopupMenuButton<String>(
-              icon: const Icon(
+              icon: Icon(
                 Icons.more_vert_rounded,
-                color: AppColors.secondary,
+                color: context.textPrimary,
               ),
               shape: RoundedRectangleBorder(borderRadius: AppRadius.mdBr),
               onSelected: (value) {
@@ -355,7 +339,7 @@ class _EnhancedNotificationScreenState
                         child: Text(
                           group,
                           style: AppTypography.overline.copyWith(
-                            color: AppColors.lightTextSecondary,
+                            color: context.textSecondary,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1.2,
                           ),
@@ -425,9 +409,9 @@ class _EnhancedNotificationScreenState
           },
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.cardColor,
               borderRadius: AppRadius.baseBr,
-              border: Border.all(color: AppColors.lightBorder),
+              border: Border.all(color: context.borderColor),
               boxShadow: isRead ? null : AppShadows.soft,
             ),
             child: IntrinsicHeight(
@@ -473,7 +457,7 @@ class _EnhancedNotificationScreenState
                                   title,
                                   style:
                                       AppTypography.titleSmall.copyWith(
-                                    color: AppColors.secondary,
+                                    color: context.textPrimary,
                                     fontWeight: isRead
                                         ? FontWeight.w500
                                         : FontWeight.w700,
@@ -486,7 +470,7 @@ class _EnhancedNotificationScreenState
                                   body,
                                   style:
                                       AppTypography.bodySmall.copyWith(
-                                    color: AppColors.lightTextSecondary,
+                                    color: context.textSecondary,
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -499,8 +483,7 @@ class _EnhancedNotificationScreenState
                                         _formatTimestamp(createdAt),
                                         style: AppTypography.small
                                             .copyWith(
-                                          color:
-                                              AppColors.lightTextSecondary,
+                                          color: context.textSecondary,
                                         ),
                                       ),
                                     if (orderId != null &&

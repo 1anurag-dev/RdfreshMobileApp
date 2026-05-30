@@ -14,7 +14,7 @@ class ProductRepositoryImpl implements ProductRepository {
       final remoteProducts = await remoteDataSource.getAllProducts();
       return Right(remoteProducts);
     } catch (e) {
-      return Left(e.toString());
+      return const Left('Unable to load products. Please try again.');
     }
   }
 }

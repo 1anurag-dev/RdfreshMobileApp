@@ -20,4 +20,9 @@ abstract class AppRoutes {
   static const String onboarding = '/onboarding';
   static const String downloads = '/downloads';
   static const String profile = '/profile';
+  static const String about = '/about';
+  static const String privacyPolicy = '/privacy-policy';
+  static const String termsOfService = '/terms-of-service';
+  static const String emailVerification = '/email-verification';
+  static const String bagChange = '/bag-change';
 }

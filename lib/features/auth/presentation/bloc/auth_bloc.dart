@@ -4,7 +4,6 @@ import '../../domain/usecases/login_with_email.dart';
 import '../../domain/usecases/logout.dart';
 import '../../domain/usecases/register_with_email.dart';
 import 'package:rdfresh/features/auth/domain/repositories/auth_repository.dart';
-import 'package:rdfresh/features/auth/domain/entities/user_entity.dart';
 import 'package:rdfresh/core/notification/data/services/secure_notification_service.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
@@ -30,6 +29,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<LoginRequested>(_onLoginRequested);
     on<RegisterRequested>(_onRegisterRequested);
     on<LogoutRequested>(_onLogoutRequested);
+    on<ForgotPasswordRequested>(_onForgotPasswordRequested);
+    on<DeleteAccountRequested>(_onDeleteAccountRequested);
+    on<SendEmailVerificationRequested>(_onSendEmailVerification);
+    on<CheckEmailVerificationRequested>(_onCheckEmailVerification);
   }
 
   Future<void> _onAuthCheckRequested(
@@ -105,6 +108,66 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
   }
 
+  Future<void> _onForgotPasswordRequested(
+    ForgotPasswordRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+
+    final result = await authRepository.sendPasswordResetEmail(email: event.email);
+
+    result.fold(
+      (failure) => emit(PasswordResetError(message: failure)),
+      (_) => emit(PasswordResetSent()),
+    );
+  }
+
+  Future<void> _onDeleteAccountRequested(
+    DeleteAccountRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(AuthLoading());
+
+    final result = await authRepository.deleteAccount(password: event.password);
+
+    await result.fold(
+      (failure) async {
+        emit(AuthError(message: failure));
+      },
+      (_) async {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.clear();
+        } catch (_) {}
+        emit(AccountDeleted());
+      },
+    );
+  }
+
+  Future<void> _onSendEmailVerification(
+    SendEmailVerificationRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    try {
+      await authRepository.sendEmailVerification();
+      emit(EmailVerificationSent());
+    } catch (_) {
+      emit(const AuthError(message: 'Failed to send verification email.'));
+    }
+  }
+
+  Future<void> _onCheckEmailVerification(
+    CheckEmailVerificationRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    final verified = await authRepository.checkEmailVerified();
+    if (verified) {
+      emit(EmailVerified());
+    } else {
+      emit(EmailNotVerified());
+    }
+  }
+
   Future<void> _onLogoutRequested(
     LogoutRequested event,
     Emitter<AuthState> emit,
@@ -121,5 +184,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('hasSeenOnboarding', false);
     } catch (_) {}
+
+    emit(Unauthenticated());
   }
 }

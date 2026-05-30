@@ -31,3 +31,25 @@ class RegisterRequested extends AuthEvent {
 }
 
 class LogoutRequested extends AuthEvent {}
+
+class ForgotPasswordRequested extends AuthEvent {
+  final String email;
+
+  const ForgotPasswordRequested({required this.email});
+
+  @override
+  List<Object?> get props => [email];
+}
+
+class DeleteAccountRequested extends AuthEvent {
+  final String password;
+
+  const DeleteAccountRequested({required this.password});
+
+  @override
+  List<Object?> get props => [password];
+}
+
+class SendEmailVerificationRequested extends AuthEvent {}
+
+class CheckEmailVerificationRequested extends AuthEvent {}

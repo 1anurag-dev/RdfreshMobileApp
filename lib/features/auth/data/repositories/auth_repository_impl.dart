@@ -27,7 +27,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on UserUnapprovedException catch (e) {
       return Left(e.message);
     } catch (e) {
-      return Left(e.toString());
+      return const Left('Something went wrong. Please try again.');
     }
   }
 
@@ -39,7 +39,19 @@ class AuthRepositoryImpl implements AuthRepository {
     } on AuthException catch (e) {
       return Left(_mapAuthException(e));
     } catch (e) {
-      return Left(e.toString());
+      return const Left('Something went wrong. Please try again.');
+    }
+  }
+
+  @override
+  Future<Either<String, void>> sendPasswordResetEmail({required String email}) async {
+    try {
+      await remoteDataSource.sendPasswordResetEmail(email: email);
+      return const Right(null);
+    } on AuthException catch (e) {
+      return Left(_mapAuthException(e));
+    } catch (e) {
+      return const Left('Failed to send reset email. Please try again.');
     }
   }
 
@@ -53,6 +65,28 @@ class AuthRepositoryImpl implements AuthRepository {
     await secureNotificationService.syncFCMToken(uid);
   }
   
+  @override
+  Future<Either<String, void>> deleteAccount({required String password}) async {
+    try {
+      await remoteDataSource.deleteAccount(password: password);
+      return const Right(null);
+    } on AuthException catch (e) {
+      return Left(_mapAuthException(e));
+    } catch (e) {
+      return const Left('Failed to delete account. Please try again.');
+    }
+  }
+
+  @override
+  Future<void> sendEmailVerification() async {
+    await remoteDataSource.sendEmailVerification();
+  }
+
+  @override
+  Future<bool> checkEmailVerified() async {
+    return remoteDataSource.checkEmailVerified();
+  }
+
   String _mapAuthException(AuthException e) {
     switch (e.code) {
       case 'invalid-credential':
@@ -79,7 +113,7 @@ class AuthRepositoryImpl implements AuthRepository {
       case 'user-token-expired':
         return 'Your session expired. Please sign in again.';
       default:
-        return '${e.message} (${e.code})';
+        return 'Something went wrong. Please try again.';
     }
   }
 }

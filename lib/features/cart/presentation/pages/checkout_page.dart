@@ -4,9 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:uuid/uuid.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/widgets/app_components.dart';
+import '../../../../core/widgets/app_toast.dart';
 import '../../../orders/data/models/order_model.dart';
 import '../../../orders/presentation/bloc/checkout_order_bloc.dart';
 import '../../../orders/presentation/bloc/checkout_order_event.dart';
@@ -37,6 +39,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
   @override
   void initState() {
     super.initState();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _emailController.text = user.email ?? '';
+      final parts = (user.displayName ?? '').split(' ');
+      if (parts.isNotEmpty) _firstNameController.text = parts.first;
+      if (parts.length > 1) _lastNameController.text = parts.sublist(1).join(' ');
+    }
     _stateController.addListener(() {
       setState(() {});
     });
@@ -71,7 +80,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         centerTitle: false,
         iconTheme: IconThemeData(color: context.textPrimary),
       ),
-      body: SingleChildScrollView(
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Form(
           key: _formKey,
@@ -104,7 +115,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           child: _buildTextField(
                             label: 'First Name',
                             controller: _firstNameController,
-                            hint: 'testing',
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
                                 return 'First name is required';
@@ -132,7 +142,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     _buildTextField(
                       label: 'Email',
                       controller: _emailController,
-                      hint: 'testing@rdfresh.com',
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Email is required';
@@ -395,24 +404,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 );
                               }
 
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Order completed successfully!',
-                                  ),
-                                  backgroundColor: AppColors.primaryGreen,
-                                ),
-                              );
+                              AppToast.show(context, message: 'Order completed successfully!');
                               context.go(AppRoutes.home);
                             } else if (checkoutState is CheckoutOrderError) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Error: ${checkoutState.message}',
-                                  ),
-                                  backgroundColor: AppColors.error,
-                                ),
-                              );
+                              AppToast.show(context, message: 'Unable to complete your order. Please check your connection and try again.', type: ToastType.error);
                             }
                           },
                           builder: (context, checkoutState) {
@@ -446,13 +441,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                   onPressed: isLoading
                                       ? null
                                       : () {
+                                          final currentUser = FirebaseAuth.instance.currentUser;
+                                          if (currentUser != null && !currentUser.emailVerified) {
+                                            _showEmailVerificationDialog(context);
+                                            return;
+                                          }
                                           if (_formKey.currentState!
                                               .validate()) {
-                                            final randomId = (100000 +
-                                                    DateTime.now()
-                                                            .millisecondsSinceEpoch %
-                                                        900000)
-                                                .toString();
+                                            final randomId = const Uuid().v4();
 
                                             final order = CheckoutOrderModel(
                                               id: randomId,
@@ -498,17 +494,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                                   CreateOrderEvent(order),
                                                 );
                                           } else {
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                  'Please fill in all required fields correctly',
-                                                ),
-                                                backgroundColor:
-                                                    AppColors.error,
-                                              ),
-                                            );
+                                            AppToast.show(context, message: 'Please fill in all required fields correctly', type: ToastType.error);
                                           }
                                         },
                                   style: ElevatedButton.styleFrom(
@@ -555,6 +541,51 @@ class _CheckoutPageState extends State<CheckoutPage> {
             ],
           ),
         ),
+      ),
+      ),
+    );
+  }
+
+  void _showEmailVerificationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Email Not Verified',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        content: const Text(
+          'Please verify your email before placing orders. Check your inbox for a verification link.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await FirebaseAuth.instance.currentUser?.sendEmailVerification();
+                if (mounted) {
+                  AppToast.show(context, message: 'Verification email sent');
+                }
+              } catch (_) {
+                if (mounted) {
+                  AppToast.show(context, message: 'Failed to send email', type: ToastType.error);
+                }
+              }
+            },
+            child: const Text(
+              'Resend Email',
+              style: TextStyle(
+                color: Color(0xFF0A6847),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

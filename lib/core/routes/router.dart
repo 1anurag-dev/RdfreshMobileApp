@@ -4,6 +4,10 @@ import 'package:rdfresh/features/Support/presentation/screens/support_screen.dar
 import 'package:rdfresh/features/faq/presentation/screens/faq_screen.dart';
 import '../../features/auth/presentation/pages/login_signup/singup_screen.dart';
 import '../../features/delivery/presentation/screens/delivery_status_screen.dart';
+import '../../features/delivery/presentation/screens/delivery_confirmed_screen.dart';
+import '../../features/delivery/presentation/screens/active_orders_screen.dart';
+import '../../features/delivery/presentation/bloc/order_bloc.dart';
+import '../../features/delivery/presentation/bloc/order_event.dart';
 import '../../features/faq/presentation/bloc/faq_bloc.dart';
 import '../../features/faq/presentation/bloc/faq_event.dart';
 import '../../features/home/presentation/pages/Home_Screen.dart';
@@ -26,11 +30,43 @@ import '../../features/home/presentation/pages/downloads_page.dart';
 import '../../features/auth/presentation/pages/onboarding_page.dart';
 import '../../features/auth/presentation/pages/splash_screen.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
+import '../../features/about/presentation/pages/about_page.dart';
+import '../../features/legal/presentation/pages/privacy_policy_page.dart';
+import '../../features/legal/presentation/pages/terms_of_service_page.dart';
+import '../../features/auth/presentation/pages/email_verification_screen.dart';
+import '../../features/delivery/presentation/screens/bag_change_screen.dart';
+
+const _publicRoutes = {
+  AppRoutes.splash,
+  AppRoutes.onboarding,
+  AppRoutes.login,
+  AppRoutes.signup,
+  AppRoutes.privacyPolicy,
+  AppRoutes.termsOfService,
+  AppRoutes.emailVerification,
+  AppRoutes.home,
+  AppRoutes.products,
+  AppRoutes.about,
+  AppRoutes.calculator,
+  AppRoutes.more,
+  AppRoutes.faq,
+  AppRoutes.support,
+  AppRoutes.downloads,
+};
 
 final goRouter = GoRouter(
   initialLocation: AppRoutes.splash,
+  redirect: (context, state) {
+    final isLoggedIn = FirebaseAuth.instance.currentUser != null;
+    final isPublicRoute = _publicRoutes.contains(state.matchedLocation);
+
+    if (!isLoggedIn && !isPublicRoute) {
+      return AppRoutes.login;
+    }
+
+    return null;
+  },
   routes: [
-    // Top-level routes (No Bottom Bar)
     GoRoute(
       path: AppRoutes.splash,
       builder: (context, state) => const SplashScreen(),
@@ -83,9 +119,42 @@ final goRouter = GoRouter(
       builder: (context, state) => const ProfilePage(),
     ),
     GoRoute(
+      path: AppRoutes.privacyPolicy,
+      name: 'privacy-policy',
+      builder: (context, state) => const PrivacyPolicyPage(),
+    ),
+    GoRoute(
+      path: AppRoutes.termsOfService,
+      name: 'terms-of-service',
+      builder: (context, state) => const TermsOfServicePage(),
+    ),
+    GoRoute(
+      path: AppRoutes.emailVerification,
+      name: 'email-verification',
+      builder: (context, state) => const EmailVerificationScreen(),
+    ),
+    GoRoute(
       path: '/notifications',
       name: 'notifications',
       builder: (context, state) => const EnhancedNotificationScreen(),
+    ),
+    GoRoute(
+      path: '${AppRoutes.bagChange}/:orderId',
+      name: 'bag-change',
+      builder: (context, state) {
+        final orderId = state.pathParameters['orderId']!;
+        return BagChangeScreen(orderId: orderId);
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.activeOrders,
+      name: 'active-orders',
+      builder: (context, state) {
+        return BlocProvider(
+          create: (_) => di.sl<OrderBloc>()..add(LoadActiveOrders()),
+          child: const ActiveOrdersScreen(),
+        );
+      },
     ),
     GoRoute(
       path: '${AppRoutes.deliveryStatus}/:orderId',
@@ -95,25 +164,35 @@ final goRouter = GoRouter(
         return DeliveryStatusScreen(orderId: orderId);
       },
     ),
+    GoRoute(
+      path: AppRoutes.deliveryConfirmed,
+      name: 'delivery-confirmed',
+      builder: (context, state) {
+        final queryParams = state.uri.queryParameters;
+        return DeliveryConfirmedScreen(
+          orderId: queryParams['orderId'] ?? '',
+          rating: int.tryParse(queryParams['rating'] ?? ''),
+          feedback: queryParams['feedback'],
+        );
+      },
+    ),
 
-    // Shell Route for persistent Bottom Bar
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
         return MainWrapper(navigationShell: navigationShell);
       },
-
       branches: [
-        // Branch 1: Home
+        // 0 — About
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: AppRoutes.home,
-              name: 'home',
-              builder: (context, state) => const HomeScreen(),
+              path: AppRoutes.about,
+              name: 'about',
+              builder: (context, state) => const AboutPage(),
             ),
           ],
         ),
-        // Branch 2: Products
+        // 1 — Products
         StatefulShellBranch(
           routes: [
             GoRoute(
@@ -123,7 +202,17 @@ final goRouter = GoRouter(
             ),
           ],
         ),
-        // Branch 3: Calculator
+        // 2 — Home (center, default)
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: AppRoutes.home,
+              name: 'home',
+              builder: (context, state) => const HomeScreen(),
+            ),
+          ],
+        ),
+        // 3 — Calculator
         StatefulShellBranch(
           routes: [
             GoRoute(
@@ -133,7 +222,7 @@ final goRouter = GoRouter(
             ),
           ],
         ),
-        // Branch 4: More
+        // 4 — More
         StatefulShellBranch(
           routes: [
             GoRoute(

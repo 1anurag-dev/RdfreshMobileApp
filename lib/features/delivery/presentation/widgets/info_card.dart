@@ -27,7 +27,7 @@ class InfoCard extends StatelessWidget {
                 CircleAvatar(backgroundColor: const Color(0xFFE8F5E9), child: Icon(icon, color: AppColors.primaryGreen, size: 20)),
                 const SizedBox(width: 12),
               ],
-              Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Expanded(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
             ],
           ),
           const SizedBox(height: 20),
@@ -37,8 +37,9 @@ class InfoCard extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(e.key, style: const TextStyle(color: AppColors.textGrey)),
-                  Text(e.value, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryNavy)),
+                  Flexible(child: Text(e.key, style: const TextStyle(color: AppColors.textGrey))),
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(e.value, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryNavy), textAlign: TextAlign.end)),
                 ],
               ),
             )),

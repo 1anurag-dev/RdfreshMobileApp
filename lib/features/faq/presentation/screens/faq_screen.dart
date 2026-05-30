@@ -97,7 +97,7 @@ class FaqScreen extends StatelessWidget {
 
                 const SizedBox(height: AppSpacing.xl),
                 _buildSupportFooter(context, context.pop),
-                const SizedBox(height: AppSpacing.xxl),
+                const SizedBox(height: 100),
               ],
             );
           }

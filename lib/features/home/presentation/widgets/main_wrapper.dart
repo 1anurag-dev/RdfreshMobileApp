@@ -1,70 +1,109 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/theme/app_theme.dart';
 
 class MainWrapper extends StatelessWidget {
   const MainWrapper({required this.navigationShell, super.key});
 
   final StatefulNavigationShell navigationShell;
 
+  static const _darkGreen = Color(0xFF1B3A2D);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: navigationShell,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: context.surfaceColor,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -4),
-            ),
-          ],
+      extendBody: true,
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          bottom: MediaQuery.of(context).padding.bottom + 16,
         ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-            child: Row(
-              children: [
-                _NavItem(
-                  label: 'Home',
-                  icon: Icons.home_outlined,
-                  activeIcon: Icons.home_rounded,
-                  index: 0,
-                  currentIndex: navigationShell.currentIndex,
-                  onTap: _goBranch,
+        child: SizedBox(
+          height: 72,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Container(
+                height: 64,
+                decoration: BoxDecoration(
+                  color: _darkGreen.withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
-                _NavItem(
-                  label: 'Products',
-                  icon: Icons.storefront_outlined,
-                  activeIcon: Icons.storefront_rounded,
-                  index: 1,
-                  currentIndex: navigationShell.currentIndex,
-                  onTap: _goBranch,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _NavIcon(
+                      icon: Icons.info_outline_rounded,
+                      index: 0,
+                      currentIndex: navigationShell.currentIndex,
+                      onTap: () => _goBranch(0),
+                    ),
+                    _NavIcon(
+                      icon: Icons.storefront_rounded,
+                      index: 1,
+                      currentIndex: navigationShell.currentIndex,
+                      onTap: () => _goBranch(1),
+                    ),
+                    const SizedBox(width: 64),
+                    _NavIcon(
+                      icon: Icons.calculate_rounded,
+                      index: 3,
+                      currentIndex: navigationShell.currentIndex,
+                      onTap: () => _goBranch(3),
+                    ),
+                    _NavIcon(
+                      icon: Icons.more_horiz_rounded,
+                      index: 4,
+                      currentIndex: navigationShell.currentIndex,
+                      onTap: () => _goBranch(4),
+                    ),
+                  ],
                 ),
-                _NavItem(
-                  label: 'Calculator',
-                  icon: Icons.calculate_outlined,
-                  activeIcon: Icons.calculate_rounded,
-                  index: 2,
-                  currentIndex: navigationShell.currentIndex,
-                  onTap: _goBranch,
+              ),
+              Positioned(
+                top: -10,
+                child: GestureDetector(
+                  onTap: () => _goBranch(2),
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0A6847), Color(0xFF059669)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(
+                        color: _darkGreen,
+                        width: 3,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0A6847).withValues(alpha: 0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.home_rounded,
+                      color: Colors.white,
+                      size: navigationShell.currentIndex == 2 ? 30 : 26,
+                    ),
+                  ),
                 ),
-                _NavItem(
-                  label: 'More',
-                  icon: Icons.more_horiz_outlined,
-                  activeIcon: Icons.more_horiz_rounded,
-                  index: 3,
-                  currentIndex: navigationShell.currentIndex,
-                  onTap: _goBranch,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -79,75 +118,57 @@ class MainWrapper extends StatelessWidget {
   }
 }
 
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.label,
+class _NavIcon extends StatelessWidget {
+  const _NavIcon({
     required this.icon,
-    required this.activeIcon,
     required this.index,
     required this.currentIndex,
     required this.onTap,
   });
 
-  final String label;
   final IconData icon;
-  final IconData activeIcon;
   final int index;
   final int currentIndex;
-  final ValueChanged<int> onTap;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isActive = index == currentIndex;
 
-    return Expanded(
-      child: InkWell(
-        borderRadius: AppRadius.mdBr,
-        onTap: () => onTap(index),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: AppDurations.fast,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? AppColors.primaryGreen.withValues(alpha: 0.1)
-                      : Colors.transparent,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isActive ? activeIcon : icon,
-                  color: isActive
-                      ? AppColors.primaryGreen
-                      : context.textTertiary,
-                  size: 24,
-                ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: 52,
+        height: 56,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color:
+                  isActive ? Colors.white : Colors.white.withValues(alpha: 0.4),
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: isActive ? 4 : 0,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: isActive
+                    ? [
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          blurRadius: 6,
+                        ),
+                      ]
+                    : [],
               ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: AppTypography.small.copyWith(
-                  color: isActive
-                      ? AppColors.primaryGreen
-                      : context.textTertiary,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                ),
-              ),
-              const SizedBox(height: 4),
-              AnimatedContainer(
-                duration: AppDurations.fast,
-                width: isActive ? 20 : 0,
-                height: 3,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryGreen,
-                  borderRadius: AppRadius.pillBr,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

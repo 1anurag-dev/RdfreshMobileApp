@@ -11,7 +11,6 @@ class NotificationInboxService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// Get unread notifications count for current user
   Stream<int> getUnreadCountStream() {
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
@@ -26,7 +25,6 @@ class NotificationInboxService {
         .map((snapshot) => snapshot.docs.length);
   }
 
-  /// Get all notifications for current user
   Stream<QuerySnapshot> getUserNotificationsStream() {
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
@@ -40,21 +38,19 @@ class NotificationInboxService {
         .snapshots();
   }
 
-  /// Mark specific notification as read
   Future<void> markNotificationAsRead(String notificationId) async {
     try {
       await _firestore
           .collection('notifications')
           .doc(notificationId)
           .update({'isRead': true});
-      
-      debugPrint('[NotificationInboxService] Marked notification $notificationId as read');
     } catch (e) {
-      debugPrint('[NotificationInboxService] Error marking notification as read: $e');
+      if (kDebugMode) {
+        debugPrint('[NotificationInboxService] Error marking notification as read: $e');
+      }
     }
   }
 
-  /// Mark all notifications for current user as read
   Future<void> markAllNotificationsAsRead() async {
     try {
       final currentUser = _auth.currentUser;
@@ -72,13 +68,13 @@ class NotificationInboxService {
       }
 
       await batch.commit();
-      debugPrint('[NotificationInboxService] Marked ${unreadNotifications.docs.length} notifications as read');
     } catch (e) {
-      debugPrint('[NotificationInboxService] Error marking all notifications as read: $e');
+      if (kDebugMode) {
+        debugPrint('[NotificationInboxService] Error marking all notifications as read: $e');
+      }
     }
   }
 
-  /// Create a new notification document
   Future<void> createNotification({
     required String notifyTo,
     required String orderId,
@@ -89,7 +85,7 @@ class NotificationInboxService {
   }) async {
     try {
       final notificationId = DateTime.now().millisecondsSinceEpoch.toString();
-      
+
       final notificationData = {
         'id': notificationId,
         'notifyTo': notifyTo,
@@ -106,28 +102,26 @@ class NotificationInboxService {
           .collection('notifications')
           .doc(notificationId)
           .set(notificationData);
-
-      debugPrint('[NotificationInboxService] Created notification: $notificationId');
     } catch (e) {
-      debugPrint('[NotificationInboxService] Error creating notification: $e');
+      if (kDebugMode) {
+        debugPrint('[NotificationInboxService] Error creating notification: $e');
+      }
     }
   }
 
-  /// Delete a notification
   Future<void> deleteNotification(String notificationId) async {
     try {
       await _firestore
           .collection('notifications')
           .doc(notificationId)
           .delete();
-      
-      debugPrint('[NotificationInboxService] Deleted notification: $notificationId');
     } catch (e) {
-      debugPrint('[NotificationInboxService] Error deleting notification: $e');
+      if (kDebugMode) {
+        debugPrint('[NotificationInboxService] Error deleting notification: $e');
+      }
     }
   }
 
-  /// Delete all notifications for current user
   Future<void> deleteAllNotifications() async {
     try {
       final currentUser = _auth.currentUser;
@@ -144,28 +138,29 @@ class NotificationInboxService {
       }
 
       await batch.commit();
-      debugPrint('[NotificationInboxService] Deleted ${notifications.docs.length} notifications');
     } catch (e) {
-      debugPrint('[NotificationInboxService] Error deleting all notifications: $e');
+      if (kDebugMode) {
+        debugPrint('[NotificationInboxService] Error deleting all notifications: $e');
+      }
     }
   }
 
-  /// Get notification by ID
   Future<DocumentSnapshot?> getNotificationById(String notificationId) async {
     try {
       final doc = await _firestore
           .collection('notifications')
           .doc(notificationId)
           .get();
-      
+
       return doc.exists ? doc : null;
     } catch (e) {
-      debugPrint('[NotificationInboxService] Error getting notification: $e');
+      if (kDebugMode) {
+        debugPrint('[NotificationInboxService] Error getting notification: $e');
+      }
       return null;
     }
   }
 
-  /// Get unread count as a single value (not stream)
   Future<int> getUnreadCount() async {
     try {
       final currentUser = _auth.currentUser;
@@ -179,12 +174,13 @@ class NotificationInboxService {
 
       return snapshot.docs.length;
     } catch (e) {
-      debugPrint('[NotificationInboxService] Error getting unread count: $e');
+      if (kDebugMode) {
+        debugPrint('[NotificationInboxService] Error getting unread count: $e');
+      }
       return 0;
     }
   }
 
-  /// Check if user has any unread notifications
   Stream<bool> get hasUnreadNotificationsStream {
     return getUnreadCountStream().map((count) => count > 0);
   }

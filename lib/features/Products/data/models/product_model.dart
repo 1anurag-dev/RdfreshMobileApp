@@ -10,6 +10,7 @@ class ProductModel extends Product {
     required super.sku,
     required super.imageUrl,
     super.isAvailable,
+    super.category,
   });
 
   factory ProductModel.fromSnapshot(DocumentSnapshot doc) {
@@ -22,6 +23,7 @@ class ProductModel extends Product {
       sku: data['sku'] ?? '',
       imageUrl: data['imageUrl'] ?? '',
       isAvailable: data['isAvailable'] ?? true,
+      category: data['category'] as String? ?? '',
     );
   }
 
@@ -34,6 +36,7 @@ class ProductModel extends Product {
       sku: json['sku'] ?? '',
       imageUrl: json['imageUrl'] ?? '',
       isAvailable: json['isAvailable'] ?? true,
+      category: json['category'] as String? ?? '',
     );
   }
 
@@ -46,6 +49,7 @@ class ProductModel extends Product {
       'sku': sku,
       'imageUrl': imageUrl,
       'isAvailable': isAvailable,
+      'category': category,
     };
   }
 }

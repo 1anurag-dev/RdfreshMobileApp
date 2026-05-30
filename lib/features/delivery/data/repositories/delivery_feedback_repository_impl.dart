@@ -29,7 +29,7 @@ class DeliveryFeedbackRepositoryImpl implements DeliveryFeedbackRepository {
     } on FeedbackException catch (e) {
       return Left(e.message);
     } catch (e) {
-      return Left('Failed to save delivery feedback: ${e.toString()}');
+      return const Left('Unable to save feedback. Please try again.');
     }
   }
 }

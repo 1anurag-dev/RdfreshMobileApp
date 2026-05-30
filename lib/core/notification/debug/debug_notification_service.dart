@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:go_router/go_router.dart';
@@ -19,7 +20,9 @@ class DebugNotificationService {
     final timestamp = DateTime.now().toIso8601String();
     final logEntry = '[$timestamp] $message';
     _logs.add(logEntry);
-    debugPrint('[DebugNotificationService] $message');
+    if (kDebugMode) {
+      debugPrint('[DebugNotificationService] $message');
+    }
   }
 
   /// Check FCM Token Sync

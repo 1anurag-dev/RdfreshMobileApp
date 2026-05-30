@@ -26,9 +26,15 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs
-              .map((doc) => OrderModel.fromFirestore(doc.data(), doc.id))
-              .toList();
+          final orders = <OrderModel>[];
+          for (final doc in snapshot.docs) {
+            try {
+              orders.add(OrderModel.fromFirestore(doc.data(), doc.id));
+            } catch (_) {
+              // Skip malformed documents
+            }
+          }
+          return orders;
         });
   }
 
@@ -40,7 +46,9 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
         .snapshots()
         .map((snapshot) {
       if (!snapshot.exists) return null;
-      return OrderModel.fromFirestore(snapshot.data()!, snapshot.id);
+      final data = snapshot.data();
+      if (data == null) return null;
+      return OrderModel.fromFirestore(data, snapshot.id);
     });
   }
 
@@ -62,13 +70,18 @@ class OrderRemoteDataSourceImpl implements OrderRemoteDataSource {
       await orderRef.update({
         'signature': signature,
         'signatureStatus': 'signed',
+        'signedAt': DateTime.now().toIso8601String(),
         'status': 'delivered',
         'feedback': feedback,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
       final updatedDoc = await orderRef.get();
-      return OrderModel.fromFirestore(updatedDoc.data()!, updatedDoc.id);
+      final updatedData = updatedDoc.data();
+      if (updatedData == null) {
+        throw AuthException(code: 'order-not-found', message: 'Order data not found after update');
+      }
+      return OrderModel.fromFirestore(updatedData, updatedDoc.id);
     } catch (e) {
       throw AuthException(code: 'update-failed', message: e.toString());
     }

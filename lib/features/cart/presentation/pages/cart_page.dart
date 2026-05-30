@@ -29,8 +29,11 @@ class CartPage extends StatelessWidget {
           ),
         ),
         centerTitle: false,
+        iconTheme: IconThemeData(color: context.textPrimary),
       ),
-      body: BlocBuilder<CartBloc, CartState>(
+      body: SafeArea(
+        top: false,
+        child: BlocBuilder<CartBloc, CartState>(
         builder: (context, state) {
           if (state.status == CartStatus.loading) {
             return const Padding(
@@ -290,6 +293,9 @@ class CartPage extends StatelessWidget {
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
                               foregroundColor: Colors.white,
+                              minimumSize: Size.zero,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 14),
                               shape: RoundedRectangleBorder(
                                   borderRadius: AppRadius.mdBr),
                             ),
@@ -309,6 +315,7 @@ class CartPage extends StatelessWidget {
             ],
           );
         },
+      ),
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:shimmer/shimmer.dart';
 import '../../../../core/routes/app_routes.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_components.dart';
+import '../../../../core/widgets/app_toast.dart';
 import 'package:rdfresh/features/Products/presentation/bloc/product_bloc.dart';
 import 'package:rdfresh/features/Products/presentation/bloc/product_event.dart';
 import 'package:rdfresh/features/Products/presentation/bloc/product_state.dart';
@@ -46,14 +47,33 @@ class _CalculatorPageState extends State<CalculatorPage> {
 
   double get _volume => _length * _width * _height;
 
-  int get _coverageUnits {
+  // Panel Calculator Formula
+  // ────────────────────────
+  // door_units     = 1 (always — every cooler has one main entrance)
+  // fan_units      = evaporator fan count from slider (1 panel per fan)
+  // equalized_units = max(0, ceil(volume / 300) − door_units − fan_units)
+  //                   covers remaining interior volume not served by door/fan panels
+  //
+  // RECOMMENDED UNITS (top number) = door_units + fan_units + equalized_units
+  //
+  // The invariant is: the top total always equals the sum of the three
+  // placement rows shown below it.
+
+  static const int _doorUnits = 1;
+
+  int get _fanUnits => _fans.toInt();
+
+  int get _volumeBasedUnits {
     if (_volume <= 0) return 0;
     return (_volume / 300).ceil();
   }
 
-  int get _doorUnits => 1;
-  int get _fanUnits => _fans.toInt();
-  int get _finalTotal => (_volume / 300).ceil();
+  int get _coverageUnits {
+    final remainder = _volumeBasedUnits - _doorUnits - _fanUnits;
+    return remainder > 0 ? remainder : 0;
+  }
+
+  int get _finalTotal => _doorUnits + _fanUnits + _coverageUnits;
 
   String get _bagConfigName {
     return _selectedProfile;
@@ -89,7 +109,7 @@ class _CalculatorPageState extends State<CalculatorPage> {
               left: AppSpacing.lg,
               right: AppSpacing.lg,
               top: AppSpacing.lg,
-              bottom: MediaQuery.of(context).padding.bottom + 100,
+              bottom: 100,
             ),
             child: Column(
               children: [
@@ -650,12 +670,7 @@ class _CalculatorPageState extends State<CalculatorPage> {
                         if (_selectedProduct != null) {
                           final user = FirebaseAuth.instance.currentUser;
                           if (user == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Please login to continue'),
-                                backgroundColor: AppColors.error,
-                              ),
-                            );
+                            AppToast.show(context, message: 'Please login to continue', type: ToastType.error);
                             return;
                           }
 
@@ -673,14 +688,7 @@ class _CalculatorPageState extends State<CalculatorPage> {
                                 ),
                               );
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  '${_selectedProduct!.name} ($_finalTotal units) added to cart'),
-                              backgroundColor: AppColors.primaryGreen,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
+                          AppToast.show(context, message: '${_selectedProduct!.name} ($_finalTotal units) added to cart');
 
                           context.push(AppRoutes.cart);
                         }
