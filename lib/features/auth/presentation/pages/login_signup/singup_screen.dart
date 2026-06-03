@@ -199,6 +199,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                             TextFormField(
                               controller: _nameController,
+                              style: const TextStyle(color: Color(0xFF1B3A2D)),
                               keyboardType: TextInputType.name,
                               textInputAction: TextInputAction.next,
                               decoration: _inputDecoration(
@@ -217,6 +218,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                             TextFormField(
                               controller: _emailController,
+                              style: const TextStyle(color: Color(0xFF1B3A2D)),
                               keyboardType: TextInputType.emailAddress,
                               textInputAction: TextInputAction.next,
                               decoration: _inputDecoration(
@@ -236,6 +238,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                             TextFormField(
                               controller: _passwordController,
+                              style: const TextStyle(color: Color(0xFF1B3A2D)),
                               obscureText: _obscurePassword,
                               textInputAction: TextInputAction.next,
                               decoration: _inputDecoration(
@@ -271,6 +274,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                             TextFormField(
                               controller: _confirmPasswordController,
+                              style: const TextStyle(color: Color(0xFF1B3A2D)),
                               obscureText: _obscureConfirmPassword,
                               textInputAction: TextInputAction.done,
                               onFieldSubmitted: (_) => _onSignUpPressed(),

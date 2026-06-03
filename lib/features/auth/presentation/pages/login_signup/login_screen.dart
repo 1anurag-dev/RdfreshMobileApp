@@ -259,6 +259,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: 32),
                             TextFormField(
                               controller: _emailController,
+                              style: const TextStyle(color: Color(0xFF1B3A2D)),
                               keyboardType: TextInputType.emailAddress,
                               textInputAction: TextInputAction.next,
                               decoration: _inputDecoration(
@@ -277,6 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: 20),
                             TextFormField(
                               controller: _passwordController,
+                              style: const TextStyle(color: Color(0xFF1B3A2D)),
                               obscureText: _obscurePassword,
                               textInputAction: TextInputAction.done,
                               onFieldSubmitted: (_) => _submit(),
