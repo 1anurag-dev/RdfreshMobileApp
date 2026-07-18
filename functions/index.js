@@ -1,6 +1,6 @@
 const admin = require("firebase-admin");
 const {logger} = require("firebase-functions");
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onDocumentCreated, onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {onCall, onRequest, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const nodemailer = require("nodemailer");
@@ -34,6 +34,25 @@ exports.sendNotification = onDocumentCreated("notifications/{id}", async (event)
         orderId: data.orderId || "",
         type: data.type || "alert",
       },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "rdfresh_default",
+          sound: "default",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+        ttl: 86400 * 1000,
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default",
+            badge: 1,
+            contentAvailable: true,
+          },
+        },
+      },
       token: fcmToken,
     };
 
@@ -41,6 +60,53 @@ exports.sendNotification = onDocumentCreated("notifications/{id}", async (event)
     logger.info(`Notification sent to user: ${userId}`);
   } catch (error) {
     logger.error("Failed to send notification:", error);
+    if (error.code === "messaging/registration-token-not-registered" ||
+        error.code === "messaging/invalid-registration-token") {
+      await db.collection("users").doc(userId).update({
+        fcmToken: admin.firestore.FieldValue.delete(),
+      }).catch(() => {});
+      logger.info(`Cleared invalid FCM token for user ${userId}`);
+    }
+  }
+});
+
+// ─── One-time Welcome Notification (fires on first FCM token sync) ──────────
+
+exports.sendWelcomeNotice = onDocumentWritten("users/{uid}", async (event) => {
+  const after = event.data.after?.data();
+  const before = event.data.before?.data();
+  if (!after) return;
+
+  // Only fire if user has an fcmToken AND we haven't already sent it.
+  if (!after.fcmToken) return;
+  if (after.welcomeNoticeSent === true) return;
+
+  // Only fire when the token was just added/changed (or user was just created)
+  const tokenChanged = before?.fcmToken !== after.fcmToken;
+  const isNewDoc = !before;
+  if (!tokenChanged && !isNewDoc) return;
+
+  const uid = event.params.uid;
+
+  try {
+    await db.collection("notifications").add({
+      title: "You're all caught up",
+      message: "We've fixed notifications in RD Fresh. You'll now get alerts for shipments and bag-change reminders.",
+      notifyTo: uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      type: "welcome",
+      orderId: "",
+      readBy: [],
+    });
+
+    await db.collection("users").doc(uid).update({
+      welcomeNoticeSent: true,
+      welcomeNoticeSentAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    logger.info(`Welcome notice queued for user ${uid}`);
+  } catch (error) {
+    logger.error("Failed to send welcome notice:", error);
   }
 });
 
@@ -552,7 +618,7 @@ exports.shipstationWebhook = onRequest({invoker: "public"}, async (req, res) => 
         }
       }
 
-      logger.info(`Order ${orderNumber} marked as delivered, deadline ${deadline.toISOString()}`);
+      logger.info(`Order ${orderNumber} marked as shipped (on the way), deadline ${deadline.toISOString()}`);
     }
 
     res.status(200).send("OK");
@@ -570,14 +636,15 @@ exports.dailyBagChangeReminder = onSchedule({
   invoker: "public",
 }, async () => {
   try {
+    // Fire on orders that are on their way OR delivered but not yet signed off.
+    // (status is filtered in code to avoid an `in`+equality composite index.)
     const unsignedSnapshot = await db.collection("orders")
-        .where("status", "==", "shipped")
         .where("signatureStatus", "==", "unsigned")
         .where("escalated", "==", false)
         .get();
 
     if (unsignedSnapshot.empty) {
-      logger.info("No shipped orders awaiting bag-change confirmation");
+      logger.info("No orders awaiting bag-change confirmation");
       return;
     }
 
@@ -585,9 +652,15 @@ exports.dailyBagChangeReminder = onSchedule({
 
     for (const orderDoc of unsignedSnapshot.docs) {
       const order = orderDoc.data();
-      const shipTime = new Date(order.shippedAt || order.deliveredAt);
+
+      // Only nag once the order is on its way or confirmed received —
+      // never while it is still processing.
+      const orderStatus = (order.status || "").toLowerCase();
+      if (orderStatus !== "shipped" && orderStatus !== "delivered") continue;
+
+      const refTime = new Date(order.deliveredAt || order.shippedAt);
       const daysSinceDelivery = Math.floor(
-          (now - shipTime) / (1000 * 60 * 60 * 24),
+          (now - refTime) / (1000 * 60 * 60 * 24),
       );
       const remindersSent = order.remindersSent || 0;
 
@@ -605,7 +678,7 @@ exports.dailyBagChangeReminder = onSchedule({
       if (remindersSent < 5) {
         await db.collection("notifications").add({
           title: `Day ${remindersSent + 1}: Change Your Bags!`,
-          message: `Your RD Fresh bags from order #${order.id || orderDoc.id} shipped ${daysSinceDelivery} days ago. Once they arrive, install them and confirm in the app.`,
+          message: `Your RD Fresh bags from order #${order.id || orderDoc.id} are waiting to be installed. Please put them in your walk-in cooler and confirm in the app to start your 30-day cycle.`,
           notifyTo: userId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           type: "bag_change_reminder",
