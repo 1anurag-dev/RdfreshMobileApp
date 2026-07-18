@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:auto_size_text/auto_size_text.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import '../../../../core/routes/app_routes.dart';
@@ -37,12 +41,15 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _editingProfile = false;
   List<DesignatedContact> _designatedContacts = [];
   bool _isLoadingContacts = true;
+  String? _profilePhotoUrl;
+  bool _isUploadingPhoto = false;
 
   @override
   void initState() {
     super.initState();
     _loadShippingAddress();
     _loadDesignatedContacts();
+    _loadProfilePhoto();
   }
 
   @override
@@ -75,6 +82,90 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (_) {}
 
     if (mounted) setState(() => _isLoadingAddress = false);
+  }
+
+  Future<void> _loadProfilePhoto() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final doc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final url = doc.data()?['profilePhotoUrl'] as String?;
+      if (mounted && url != null && url.isNotEmpty) {
+        setState(() => _profilePhotoUrl = url);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pickProfilePhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: AppColors.primaryGreen),
+                title: const Text('Take Photo'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: AppColors.primaryGreen),
+                title: const Text('Choose from Gallery'),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: source,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 75,
+    );
+    if (picked == null) return;
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    setState(() => _isUploadingPhoto = true);
+
+    try {
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('profile_photos')
+          .child('$uid.jpg');
+      await ref.putFile(File(picked.path));
+      final url = await ref.getDownloadURL();
+
+      await FirebaseFirestore.instance.collection('users').doc(uid).set(
+        {'profilePhotoUrl': url},
+        SetOptions(merge: true),
+      );
+
+      if (mounted) {
+        setState(() {
+          _profilePhotoUrl = url;
+          _isUploadingPhoto = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+        AppToast.show(context, message: 'Failed to update photo. Please try again.', type: ToastType.error);
+      }
+    }
   }
 
   Future<void> _saveShippingAddress() async {
@@ -399,23 +490,28 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Column(
         children: [
           GestureDetector(
-            onTap: () {},
+            onTap: _isUploadingPhoto ? null : _pickProfilePhoto,
             child: Stack(
               children: [
                 CircleAvatar(
                   radius: 40,
                   backgroundColor:
                       AppColors.primaryGreen.withValues(alpha: 0.1),
-                  child: AutoSizeText(
-                    initials.isEmpty ? 'RD' : initials,
-                    style: const TextStyle(
-                      color: AppColors.primaryGreen,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 24,
-                    ),
-                    maxLines: 1,
-                    minFontSize: 14,
-                  ),
+                  backgroundImage: _profilePhotoUrl != null
+                      ? NetworkImage(_profilePhotoUrl!)
+                      : null,
+                  child: _profilePhotoUrl != null
+                      ? null
+                      : AutoSizeText(
+                          initials.isEmpty ? 'RD' : initials,
+                          style: const TextStyle(
+                            color: AppColors.primaryGreen,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 24,
+                          ),
+                          maxLines: 1,
+                          minFontSize: 14,
+                        ),
                 ),
                 Positioned(
                   bottom: 0,
@@ -426,11 +522,20 @@ class _ProfilePageState extends State<ProfilePage> {
                       color: AppColors.primaryGreen,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.camera_alt_rounded,
-                      color: Colors.white,
-                      size: 14,
-                    ),
+                    child: _isUploadingPhoto
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.camera_alt_rounded,
+                            color: Colors.white,
+                            size: 14,
+                          ),
                   ),
                 ),
               ],

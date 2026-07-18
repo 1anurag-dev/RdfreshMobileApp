@@ -247,19 +247,26 @@ class _HomeScreenState extends State<HomeScreen> {
             state is ActiveOrdersLoaded ? state.orders : <OrderEntity>[];
         final lastOrder = orders.isNotEmpty ? orders.first : null;
 
+        // Countdown starts only once the customer confirms bag installation
+        // (signedAt) — NOT when the order is placed.
         int daysRemaining = 30;
-        if (lastOrder != null) {
-          final orderDate = DateTime.tryParse(lastOrder.orderDate);
-          if (orderDate != null) {
-            final daysSince = DateTime.now().difference(orderDate).inDays;
+        bool hasActiveCycle = false;
+        final signedAtStr = lastOrder?.signedAt;
+        if (signedAtStr != null) {
+          final signed = DateTime.tryParse(signedAtStr);
+          if (signed != null) {
+            final daysSince = DateTime.now().difference(signed).inDays;
             daysRemaining = (30 - daysSince).clamp(0, 30);
+            hasActiveCycle = true;
           }
         }
 
-        final progress = lastOrder != null ? daysRemaining / 30.0 : 1.0;
-        final statusText = lastOrder != null
+        final progress = hasActiveCycle ? daysRemaining / 30.0 : 1.0;
+        final statusText = hasActiveCycle
             ? 'Replace in $daysRemaining days'
-            : 'No active installation';
+            : (lastOrder != null
+                ? 'Confirm installation to start'
+                : 'No active installation');
 
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -363,7 +370,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               AutoSizeText(
-                                lastOrder != null ? '$daysRemaining' : '--',
+                                hasActiveCycle ? '$daysRemaining' : '--',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 28,
@@ -527,7 +534,7 @@ class _HomeScreenState extends State<HomeScreen> {
             return Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
               child: GestureDetector(
-                onTap: () => context.push('${AppRoutes.bagChange}/${doc.id}'),
+                onTap: () => context.push('${AppRoutes.deliveryStatus}/${doc.id}'),
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
@@ -697,7 +704,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         return SizedBox(
-          height: 120,
+          height: 150,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),

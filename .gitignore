@@ -69,3 +69,6 @@ key.properties
 # iOS build artifacts & signing profiles
 ios/build/
 *.mobileprovision
+
+# Claude Code local settings (contains secrets — never commit)
+.claude/
